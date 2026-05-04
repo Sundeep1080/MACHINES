@@ -1822,19 +1822,7 @@ async function processAll(bySymbol) {
     // ── Score — exact IRAVAT calcScore ──
     const score = calcScore(signal, bandZone, barsAgo, weeklyTrend, rr);
 
-    // ── FEEDBACK LOOP B: Context suppression/boost ──
-    // If this signal+regime+zone context has a learnt WR < 45% (≥5 trades) → penalise -8
-    // If WR > 70% (≥5 trades) → boost +5
-    const ctxKey = buildCtxKey(signal, mktRegime, getBkt(secBrd.pct||50,40,60), getBkt(hvp||50,30,60));
-    const ctx    = contextWRMap[ctxKey];
-    let ctxAdj   = 0;
-    if(ctx && ctx.n >= 5){
-      if(ctx.wr < 45)  ctxAdj = -8;
-      else if(ctx.wr > 70) ctxAdj = 5;
-    }
-    const finalScore = Math.min(100, Math.max(0, score + ctxAdj));
-
-    // ── NANDI intelligence layer (kept) ──
+    // ── NANDI intelligence layer ──
     const secBrd    = sectorBreadth[info.sector] || {pct:50};
     const prevSig   = prevSigMap[sym] || null;
     const ret250    = stockReturns[sym] ? stockReturns[sym].ret_250 : null;
@@ -1844,6 +1832,16 @@ async function processAll(bySymbol) {
     const learnedWR = getLearntWR(signal, mktRegime, secBrd.pct, hvp);
     const earnProx  = checkEarningProximity(sym, rows[n].date, 15);
     const mbSc      = computeMBScore(sym, bySymbol);
+
+    // ── FEEDBACK LOOP B: Context suppression/boost ──
+    const ctxKey = buildCtxKey(signal, mktRegime, getBkt(secBrd.pct||50,40,60), getBkt(hvp||50,30,60));
+    const ctx    = contextWRMap[ctxKey];
+    let ctxAdj   = 0;
+    if(ctx && ctx.n >= 5){
+      if(ctx.wr < 45)  ctxAdj = -8;
+      else if(ctx.wr > 70) ctxAdj = 5;
+    }
+    const finalScore = Math.min(100, Math.max(0, score + ctxAdj));
 
     const sigObj = {
       symbol:sym, sector:info.sector, index:info.index,
