@@ -591,6 +591,8 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
     <button class="i-tab" onclick="switchIntel('ledger')">Ledger</button>
     <button class="i-tab" onclick="switchIntel('retcorr')">Return Corr</button>
     <button class="i-tab" onclick="switchIntel('slDash')" style="background:rgba(217,119,6,.15);color:var(--amber)">🧠 Learning Dashboard</button>
+    <button class="i-tab" onclick="switchIntel('dailymovers')" style="background:rgba(13,148,136,.12);color:var(--teal)">📈 Daily Movers</button>
+    <button class="i-tab" onclick="switchIntel('orderlog')" style="background:rgba(99,102,241,.12);color:var(--kite)">📋 Order Log</button>
     <button class="i-tab" onclick="switchIntel('sigbandmatrix')" style="background:rgba(99,102,241,.12);color:var(--kite)">📊 Signal×Band Matrix</button>
   </div>
 
@@ -767,6 +769,60 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
   <div class="i-panel card" id="intel-slDash" style="border-radius:0 0 var(--r-lg) var(--r-lg)">
     <div class="ct" style="background:rgba(217,119,6,.12);border-bottom:1px solid rgba(217,119,6,.2)"><i class="fas fa-brain"></i> 🧠 Self-Learning Dashboard — What Has NANDI Learnt?</div>
     <div id="slDashContent" style="padding:4px 0"></div>
+  </div>
+
+  <!-- DAILY MOVERS -->
+  <div class="i-panel card" id="intel-dailymovers" style="border-radius:0 0 var(--r-lg) var(--r-lg)">
+    <div class="ct teal"><i class="fas fa-fire"></i> Daily Momentum Movers — Stocks Consistently Moving 2%+ Per Day</div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--text2);margin-bottom:10px;padding:6px 10px;background:var(--teal-g);border-radius:4px;border:1px solid rgba(13,148,136,.2)">
+      Shows top 50 stocks with strongest recent daily momentum. No signal required — pure price action. Use to cross-check triggers in TradingView.
+    </div>
+    <div class="filter-bar" style="padding:4px 0;margin-bottom:8px">
+      <select class="fi" id="dmLookback" onchange="renderDailyMovers()">
+        <option value="3">Last 3 days</option>
+        <option value="5" selected>Last 5 days</option>
+        <option value="10">Last 10 days</option>
+      </select>
+      <select class="fi" id="dmDir" onchange="renderDailyMovers()">
+        <option value="both">Both directions</option>
+        <option value="bull">Bullish only (+)</option>
+        <option value="bear">Bearish only (−)</option>
+      </select>
+      <select class="fi" id="dmMinPct" onchange="renderDailyMovers()">
+        <option value="1">Min 1% avg/day</option>
+        <option value="2" selected>Min 2% avg/day</option>
+        <option value="3">Min 3% avg/day</option>
+      </select>
+      <button class="btn btn-d" onclick="exportDailyMoversCSV()"><i class="fas fa-download"></i> Export CSV</button>
+    </div>
+    <div class="tw"><table id="dmTable">
+      <thead><tr>
+        <th>#</th><th>Symbol</th><th>Sector</th>
+        <th>Prev Close</th><th>CMP / Latest</th><th>Today %</th>
+        <th>Avg %/day</th><th>Consistency</th><th>Days +2%</th>
+        <th>Signal</th><th>SMI</th><th>In Portfolio?</th>
+      </tr></thead>
+      <tbody id="dmBody"><tr><td colspan="12" class="empty">Load CSV data to see daily movers</td></tr></tbody>
+    </table></div>
+  </div>
+
+  <!-- ORDER LOG -->
+  <div class="i-panel card" id="intel-orderlog" style="border-radius:0 0 var(--r-lg) var(--r-lg)">
+    <div class="ct" style="background:rgba(99,102,241,.12);border-bottom:1px solid rgba(99,102,241,.2)">
+      <i class="fas fa-list"></i> Order Log — All Executed Orders with Entry Price &amp; P&amp;L
+      <button class="btn btn-d" style="font-size:8px;padding:2px 7px;margin-left:auto" onclick="exportOrderLog()"><i class="fas fa-download"></i> Export CSV</button>
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--text2);padding:5px 10px;background:var(--bg2);border-bottom:1px solid var(--border)">
+      Every LIMIT/MARKET order placed through NANDI is tracked here permanently. Entry price, GTT levels, and exit P&amp;L recorded automatically.
+    </div>
+    <div class="tw"><table>
+      <thead><tr>
+        <th>Date / Time</th><th>Symbol</th><th>Dir</th><th>Type</th><th>Qty</th>
+        <th>Entry ₹</th><th>TP ₹</th><th>SL ₹</th><th>Exit ₹</th>
+        <th>Return %</th><th>P&amp;L ₹</th><th>Status</th><th>Actions</th>
+      </tr></thead>
+      <tbody id="orderLogBody"><tr><td colspan="13" class="empty">No orders yet</td></tr></tbody>
+    </table></div>
   </div>
 
   <!-- SIGNAL × BAND MATRIX -->
@@ -1803,6 +1859,15 @@ async function processAll(bySymbol) {
 
     const signal = detectSALT(h9, h10, smi, smiSig, bandZone);
     if (signal === 'WAIT') continue;
+
+    // ── SMI DIRECTION FILTER ──
+    // Buy signals: SMI must be rising (today > yesterday) — momentum confirming
+    // Sell signals: SMI must be falling (today < yesterday) — momentum confirming
+    // This eliminates signals where price pattern fires but momentum is diverging
+    const smiNow  = smi[n]  !== null ? smi[n]  : 0;
+    const smiPrev = smi[n-1]!== null ? smi[n-1]: smiNow;
+    if(signal.startsWith('B') && smiNow <= smiPrev) continue;
+    if(signal.startsWith('S') && smiNow >= smiPrev) continue;
 
     const hvLast=hvs[n]||15;
     const hvArr=hvs.filter(v=>v!==null);
@@ -2892,6 +2957,18 @@ function selectTop25(signals,type){
   var q=signals.filter(function(s){
     if(isBuy&&!s.signal.startsWith('B'))return false;
     if(!isBuy&&!s.signal.startsWith('S'))return false;
+    // ── FRESHNESS FILTER ──
+    // barsAgo=0: signal fired today → always allow
+    // barsAgo=1: signal fired yesterday → allow only if price hasn't moved against us
+    //            AND it's a good combo OR score is strong
+    // barsAgo>1: stale → reject
+    var bars=s.barsAgo||0;
+    if(bars>1)return false;
+    if(bars===1){
+      if(isBuy&&s.prev_close&&s.cmp<s.prev_close)return false;   // price fell since signal — skip
+      if(!isBuy&&s.prev_close&&s.cmp>s.prev_close)return false;  // price rose since sell signal — skip
+      if(!s.is_good_combo&&s.score<regThr+10)return false;        // stale non-EV+ signals need high score
+    }
     if(s.is_good_combo)return true;
     if(s.signal==='B1-MOM'||s.signal==='B1-OS'||s.signal==='S1-OB')return false;
     return s.score>=regThr;
@@ -3651,7 +3728,7 @@ function switchIntel(name){
 }
 function renderIntelActive(){const active=document.querySelector('.i-panel.active');if(active)renderIntelTab(active.id.replace('intel-',''))}
 function renderIntelTab(name){
-  const map={m6:renderM6,m1:renderM1,m4:renderM4,m2:renderM2,m3:renderM3,m5:renderM5,m7:renderM7,tpsl:renderTPSL,mb:renderMB,sectors:renderSectors,ledger:renderLedger,retcorr:renderRetCorr, wrref:function(){},regimexperf:function(){renderRegimeCrossPerf();},slDash:renderSLDash,sigbandmatrix:function(){sbmSwitch(_sbmMode||'historic');}};
+  const map={m6:renderM6,m1:renderM1,m4:renderM4,m2:renderM2,m3:renderM3,m5:renderM5,m7:renderM7,tpsl:renderTPSL,mb:renderMB,sectors:renderSectors,ledger:renderLedger,retcorr:renderRetCorr,wrref:function(){},regimexperf:function(){renderRegimeCrossPerf();},slDash:renderSLDash,dailymovers:renderDailyMovers,orderlog:renderOrderLog,sigbandmatrix:function(){sbmSwitch(_sbmMode||'historic');}};
   if(map[name])map[name]();
 }
 
@@ -4725,13 +4802,289 @@ function renderRegimeCrossPerf(){
   html+='<div style="margin-top:6px">Each signal now shows: <span class="b" style="background:rgba(5,150,105,.15);color:var(--bull);border-color:rgba(5,150,105,.3)">WITH</span> aligned with all indices · <span class="b" style="background:rgba(245,158,11,.12);color:var(--amber);border-color:rgba(217,119,6,.3)">PART</span> NSEI agrees, sub-indices mixed · <span class="b" style="background:rgba(220,38,38,.12);color:var(--bear);border-color:rgba(220,38,38,.3)">CONTRA</span> against overall trend</div>';
   html+='<div style="margin-top:6px;color:var(--text2)">WITH MKT signals = highest overnight conviction. CONTRA signals = individual stock story — can still be profitable (this panel tracks your actual WR for each).</div>';
   html+='</div>';
+
+  // ══════════════════════════════════════════════════════════════════
+  // TRIGGER TYPE × BAND POSITION — Signal count + WR% + avg P&L matrix
+  // ══════════════════════════════════════════════════════════════════
+  var SIGS2=['B1-OS','B1-MOM','B2','B3','S1-OB','S1-MOM','S2','S3'];
+  var ZONES=['rej_lo','below_va','va','above_va','rej_hi'];
+  var ZONE_LABELS={'rej_lo':'REJ Lo','below_va':'Below VA','va':'VA','above_va':'Above VA','rej_hi':'REJ Hi'};
+  var ZONE_COLORS={'rej_lo':'var(--bull)','below_va':'var(--teal)','va':'var(--text2)','above_va':'var(--amber)','rej_hi':'var(--bear)'};
+
+  // Build matrix: mat[sig][zone] = {w,l,n,pnls[]}
+  var mat2={};
+  SIGS2.forEach(function(s){mat2[s]={};ZONES.forEach(function(z){mat2[s][z]={w:0,l:0,n:0,pnls:[]};});});
+  // Also track daily signal counts from allSignals
+  var dailyMat={};
+  SIGS2.forEach(function(s){dailyMat[s]={};ZONES.forEach(function(z){dailyMat[s][z]=0;});});
+
+  res.forEach(function(r){
+    var sig=r.signal,zone=r.band_zone;
+    if(!SIGS2.includes(sig)||!ZONES.includes(zone))return;
+    mat2[sig][zone].n++;
+    if(r.status==='win'){mat2[sig][zone].w++;}else{mat2[sig][zone].l++;}
+    if(r.pnl_pct!==null)mat2[sig][zone].pnls.push(r.pnl_pct);
+  });
+  allSignals.forEach(function(s){
+    if(SIGS2.includes(s.signal)&&ZONES.includes(s.band_zone))dailyMat[s.signal][s.band_zone]++;
+  });
+
+  // Column totals per zone
+  var zoneTotals={};
+  ZONES.forEach(function(z){
+    var t=0,w=0,pnlSum=0,pnlCnt=0;
+    SIGS2.forEach(function(s){t+=mat2[s][z].n;w+=mat2[s][z].w;mat2[s][z].pnls.forEach(function(p){pnlSum+=p;pnlCnt++;});});
+    zoneTotals[z]={n:t,w:w,avgPnl:pnlCnt>0?parseFloat((pnlSum/pnlCnt).toFixed(2)):null};
+  });
+  // Row totals per signal
+  var sigTotals={};
+  SIGS2.forEach(function(s){
+    var t=0,w=0,pnlSum=0,pnlCnt=0;
+    ZONES.forEach(function(z){t+=mat2[s][z].n;w+=mat2[s][z].w;mat2[s][z].pnls.forEach(function(p){pnlSum+=p;pnlCnt++;});});
+    sigTotals[s]={n:t,w:w,avgPnl:pnlCnt>0?parseFloat((pnlSum/pnlCnt).toFixed(2)):null};
+  });
+
+  function wrPct(o){return o.n>0?Math.round(o.w/o.n*100):null;}
+  function avgPnlStr(pnls){if(!pnls.length)return null;var s=pnls.reduce(function(a,b){return a+b;},0)/pnls.length;return parseFloat(s.toFixed(2));}
+  function cellBg(w,n){
+    if(w===null||n<1)return'var(--bg3)';
+    var alpha=Math.min(0.45,0.05+n/15*0.4);
+    if(w>=BK)return'rgba(5,150,105,'+alpha+')';
+    if(w>=50)return'rgba(245,158,11,'+alpha+')';
+    return'rgba(220,38,38,'+alpha+')';
+  }
+  function cellTc(w){return w===null?'var(--text3)':w>=BK?'var(--bull)':w>=50?'var(--amber)':'var(--bear)';}
+  function miniBar(w,maxW){
+    if(!maxW)return'';
+    var pct=Math.round(w/maxW*100);
+    var color=w>=BK?'var(--bull)':w>=50?'var(--amber)':'var(--bear)';
+    return'<div style="width:100%;height:3px;background:var(--border);border-radius:2px;margin-top:3px"><div style="width:'+pct+'%;height:3px;background:'+color+';border-radius:2px"></div></div>';
+  }
+
+  html+='<div style="margin-top:16px">';
+  html+='<div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--bright);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">🎯 Trigger Type × Band Zone — Win Rate, Signal Count & Avg P&L</div>';
+  html+='<div style="font-family:var(--mono);font-size:8px;color:var(--text2);margin-bottom:10px">Each cell: <strong>WR%</strong> · n=trades · avg P&L% · bar = WR vs 63.6% breakeven &nbsp;|&nbsp; Right column: today\'s live signal count per trigger &nbsp;|&nbsp; 🟢 EV+ ≥63.6% · 🟡 marginal · 🔴 EV−</div>';
+
+  html+='<div style="overflow-x:auto"><table style="border-collapse:collapse;font-family:var(--mono);font-size:9px;min-width:600px">';
+  // Header row
+  html+='<thead><tr>';
+  html+='<th style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);text-align:left;min-width:80px;position:sticky;left:0;z-index:3">Signal</th>';
+  ZONES.forEach(function(z){
+    html+='<th style="padding:5px 8px;background:var(--bg3);border:1px solid var(--border);text-align:center;color:'+ZONE_COLORS[z]+'">'+ZONE_LABELS[z]+'</th>';
+  });
+  html+='<th style="padding:5px 8px;background:var(--bg3);border:1px solid var(--border);text-align:center;color:var(--amber)">Total</th>';
+  html+='<th style="padding:5px 8px;background:var(--bg3);border:1px solid var(--border);text-align:center;color:var(--kite)" title="Today\'s live signal count">Today</th>';
+  html+='</tr></thead><tbody>';
+
+  SIGS2.forEach(function(sig){
+    var isBuy=sig.startsWith('B');
+    var sigClr=isBuy?'var(--bull)':'var(--bear)';
+    var rowTotal=sigTotals[sig];
+    var todayTotal=ZONES.reduce(function(s,z){return s+dailyMat[sig][z];},0);
+    html+='<tr>';
+    html+='<td style="padding:6px 10px;border:1px solid var(--border);background:var(--bg2);font-weight:700;color:'+sigClr+';position:sticky;left:0;z-index:2">'+sig+'</td>';
+    ZONES.forEach(function(z){
+      var c=mat2[sig][z];
+      var w=wrPct(c);
+      var ap=avgPnlStr(c.pnls);
+      var dCount=dailyMat[sig][z];
+      var bg=cellBg(w,c.n);
+      var tc=cellTc(w);
+      var star=w!==null&&w>=70?' ★':'';
+      if(c.n===0&&dCount===0){
+        html+='<td style="padding:4px 6px;border:1px solid var(--border);text-align:center;background:var(--bg3);color:var(--text3)">—</td>';
+      } else {
+        html+='<td style="padding:4px 6px;border:1px solid var(--border);text-align:center;background:'+bg+';cursor:default" title="'+sig+' × '+ZONE_LABELS[z]+' | WR='+(w!==null?w+'%':'n/a')+' | n='+c.n+(ap!==null?' | AvgPnL='+(ap>=0?'+':'')+ap+'%':'')+(dCount?' | Today: '+dCount+' signals':'') + '">';
+        if(c.n>0){
+          html+='<div style="font-weight:700;color:'+tc+';font-size:10px">'+(w!==null?w+'%'+star:'—')+'</div>';
+          html+='<div style="font-size:7px;color:var(--text3)">n='+c.n+'</div>';
+          if(ap!==null) html+='<div style="font-size:7px;color:'+(ap>=0?'var(--bull)':'var(--bear)')+'">'+(ap>=0?'+':'')+ap+'%</div>';
+          if(w!==null) html+=miniBar(w,100);
+        } else {
+          html+='<div style="font-size:7px;color:var(--text3)">no hist</div>';
+        }
+        if(dCount>0) html+='<div style="margin-top:2px"><span style="background:rgba(99,102,241,.18);color:var(--kite);font-size:7px;padding:1px 4px;border-radius:3px;font-weight:700">▶ '+dCount+' today</span></div>';
+        html+='</td>';
+      }
+    });
+    // Row total
+    var rw=rowTotal.n>0?Math.round(rowTotal.w/rowTotal.n*100):null;
+    var rap=rowTotal.avgPnl;
+    html+='<td style="padding:4px 8px;border:1px solid var(--border);background:var(--bg3);text-align:center">';
+    if(rowTotal.n>0){
+      html+='<div style="font-weight:700;color:'+(rw!==null&&rw>=BK?'var(--bull)':rw!==null&&rw>=50?'var(--amber)':'var(--bear)')+'">'+rw+'%</div>';
+      html+='<div style="font-size:7px;color:var(--text3)">n='+rowTotal.n+'</div>';
+      if(rap!==null) html+='<div style="font-size:7px;color:'+(rap>=0?'var(--bull)':'var(--bear)')+'">'+(rap>=0?'+':'')+rap+'%</div>';
+    } else { html+='<span class="c-dim">—</span>'; }
+    html+='</td>';
+    // Today total
+    html+='<td style="padding:4px 8px;border:1px solid var(--border);background:var(--bg3);text-align:center">';
+    if(todayTotal>0) html+='<strong style="color:var(--kite)">'+todayTotal+'</strong>';
+    else html+='<span class="c-dim">—</span>';
+    html+='</td>';
+    html+='</tr>';
+  });
+
+  // Zone totals footer row
+  html+='<tr>';
+  html+='<td style="padding:4px 10px;border:1px solid var(--border);background:var(--bg3);font-size:8px;font-weight:700;color:var(--text2);position:sticky;left:0;z-index:2">Zone Total</td>';
+  var grandN=0,grandW=0;
+  ZONES.forEach(function(z){
+    var zt=zoneTotals[z];
+    grandN+=zt.n; grandW+=zt.w;
+    var zw=zt.n>0?Math.round(zt.w/zt.n*100):null;
+    var zap=zt.avgPnl;
+    html+='<td style="padding:4px 6px;border:1px solid var(--border);background:var(--bg3);text-align:center">';
+    if(zt.n>0){
+      html+='<div style="font-weight:700;color:'+(zw>=BK?'var(--bull)':zw>=50?'var(--amber)':'var(--bear)')+'">'+zw+'%</div>';
+      html+='<div style="font-size:7px;color:var(--text3)">n='+zt.n+'</div>';
+      if(zap!==null) html+='<div style="font-size:7px;color:'+(zap>=0?'var(--bull)':'var(--bear)')+'">'+(zap>=0?'+':'')+zap+'%</div>';
+    } else { html+='<span class="c-dim">—</span>'; }
+    html+='</td>';
+  });
+  var grandWR=grandN>0?Math.round(grandW/grandN*100):null;
+  html+='<td style="padding:4px 8px;border:1px solid var(--border);background:var(--bg3);text-align:center;font-weight:700;color:var(--bright)">'+(grandWR!==null?grandWR+'%<br><span style="font-size:7px;color:var(--text3)">n='+grandN+'</span>':'—')+'</td>';
+  html+='<td style="padding:4px 8px;border:1px solid var(--border);background:var(--bg3)"></td>';
+  html+='</tr>';
+  html+='</tbody></table></div>';
+
+  // Heat summary — best and worst combos
+  var combos=[];
+  SIGS2.forEach(function(s){ZONES.forEach(function(z){var c=mat2[s][z];var w=wrPct(c);var ap=avgPnlStr(c.pnls);if(c.n>=3)combos.push({sig:s,zone:z,wr:w,n:c.n,avgPnl:ap});});});
+  combos.sort(function(a,b){return b.wr-a.wr;});
+  var top5=combos.filter(function(c){return c.wr>=BK;}).slice(0,5);
+  var bot5=combos.filter(function(c){return c.wr<BK;}).slice(-5).reverse();
+
+  if(top5.length||bot5.length){
+    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">';
+    if(top5.length){
+      html+='<div style="background:rgba(5,150,105,.06);border:1px solid rgba(5,150,105,.2);border-radius:6px;padding:10px 12px">';
+      html+='<div style="font-family:var(--mono);font-size:9px;font-weight:700;color:var(--bull);margin-bottom:6px">✅ Best EV+ Combos (WR ≥ 63.6%)</div>';
+      top5.forEach(function(c){
+        html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(5,150,105,.12);font-family:var(--mono);font-size:8px">';
+        html+='<span><strong style="color:'+(c.sig.startsWith('B')?'var(--bull)':'var(--bear)')+'">'+c.sig+'</strong> × <span style="color:'+ZONE_COLORS[c.zone]+'">'+ZONE_LABELS[c.zone]+'</span></span>';
+        html+='<span><strong style="color:var(--bull)">'+c.wr+'%</strong> <span style="color:var(--text3)">n='+c.n+'</span>'+(c.avgPnl!==null?' <span style="color:'+(c.avgPnl>=0?'var(--bull)':'var(--bear)')+'"> '+(c.avgPnl>=0?'+':'')+c.avgPnl+'%</span>':'')+'</span>';
+        html+='</div>';
+      });
+      html+='</div>';
+    }
+    if(bot5.length){
+      html+='<div style="background:rgba(220,38,38,.05);border:1px solid rgba(220,38,38,.2);border-radius:6px;padding:10px 12px">';
+      html+='<div style="font-family:var(--mono);font-size:9px;font-weight:700;color:var(--bear);margin-bottom:6px">⚠️ Avoid — EV− Combos (WR &lt; 63.6%)</div>';
+      bot5.forEach(function(c){
+        html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(220,38,38,.1);font-family:var(--mono);font-size:8px">';
+        html+='<span><strong style="color:'+(c.sig.startsWith('B')?'var(--bull)':'var(--bear)')+'">'+c.sig+'</strong> × <span style="color:'+ZONE_COLORS[c.zone]+'">'+ZONE_LABELS[c.zone]+'</span></span>';
+        html+='<span><strong style="color:var(--bear)">'+c.wr+'%</strong> <span style="color:var(--text3)">n='+c.n+'</span>'+(c.avgPnl!==null?' <span style="color:'+(c.avgPnl>=0?'var(--bull)':'var(--bear)')+'"> '+(c.avgPnl>=0?'+':'')+c.avgPnl+'%</span>':'')+'</span>';
+        html+='</div>';
+      });
+      html+='</div>';
+    }
+    html+='</div>';
+  }
+  html+='</div>'; // end trigger×band section
+
   el.innerHTML=html;
 }
 
 
 
 // ═══════════════════════════════════════════════════════════
-// BROKER PAGE — Orders, Positions, Holdings, GTT, Exit
+// DAILY MOVERS
+// ═══════════════════════════════════════════════════════════
+function renderDailyMovers() {
+  const tb=document.getElementById('dmBody');
+  if(!tb)return;
+  if(!Object.keys(allStockData).length){
+    tb.innerHTML='<tr><td colspan="12" class="empty">Load CSV data first</td></tr>';return;
+  }
+  const lookback=parseInt((document.getElementById('dmLookback')||{value:'5'}).value)||5;
+  const dir=(document.getElementById('dmDir')||{value:'both'}).value||'both';
+  const minPct=parseFloat((document.getElementById('dmMinPct')||{value:'2'}).value)||2;
+  const pfBuySyms=new Set(),pfSellSyms=new Set();
+  dailyPortfolios.filter(p=>p.status==='active').forEach(pf=>{
+    pf.stocks.forEach(s=>pf.type==='buy'?pfBuySyms.add(s.symbol):pfSellSyms.add(s.symbol));
+  });
+  const top25BuySyms=new Set(selectTop25(allSignals,'buy').map(s=>s.symbol));
+  const top25SellSyms=new Set(selectTop25(allSignals,'sell').map(s=>s.symbol));
+  const movers=[];
+  Object.keys(allStockData).forEach(sym=>{
+    const info=allStockData[sym];
+    if(info.index==='MAJOR INDEX')return;
+    const rows=info.rows;
+    if(rows.length<lookback+1)return;
+    const n=rows.length-1;
+    const dailyRets=[];
+    for(let i=n-lookback+1;i<=n;i++){
+      if(rows[i-1]&&rows[i]){
+        const ret=(rows[i].cl-rows[i-1].cl)/rows[i-1].cl*100;
+        dailyRets.push(ret);
+      }
+    }
+    if(!dailyRets.length)return;
+    const avgRet=dailyRets.reduce((a,b)=>a+b,0)/dailyRets.length;
+    const absPct=Math.abs(avgRet);
+    if(absPct<minPct)return;
+    if(dir==='bull'&&avgRet<0)return;
+    if(dir==='bear'&&avgRet>0)return;
+    const daysAbove=dailyRets.filter(r=>Math.abs(r)>=minPct).length;
+    const consistency=Math.round(daysAbove/dailyRets.length*100);
+    const prevClose=rows[n-1].cl;
+    const latestClose=rows[n].cl;
+    const todayPct=(latestClose-prevClose)/prevClose*100;
+    const sigObj=allSignals.find(s=>s.symbol===sym);
+    const closes=rows.map(r=>r.cl);
+    const highs=rows.map(r=>r.hi),lows=rows.map(r=>r.lo);
+    const {smi}=calcSMI(highs,lows,closes);
+    const smiNow=smi[n]!==null?parseFloat(smi[n].toFixed(1)):null;
+    let pfStatus='—';
+    if(pfBuySyms.has(sym))pfStatus='<span class="b b-bull">BUY PF</span>';
+    else if(pfSellSyms.has(sym))pfStatus='<span class="b b-bear">SELL PF</span>';
+    else if(top25BuySyms.has(sym))pfStatus='<span class="b b-teal">Top50 BUY</span>';
+    else if(top25SellSyms.has(sym))pfStatus='<span class="b b-amb">Top50 SELL</span>';
+    movers.push({sym,sector:info.sector,prevClose,latestClose,todayPct,avgRet,consistency,daysAbove,lookback:dailyRets.length,sigObj,smiNow,pfStatus,absPct});
+  });
+  movers.sort((a,b)=>b.absPct-a.absPct);
+  const top=movers.slice(0,50);
+  if(!top.length){tb.innerHTML=`<tr><td colspan="12" class="empty">No stocks with avg ≥${minPct}% daily move in last ${lookback} days</td></tr>`;return;}
+  tb.innerHTML=top.map((m,i)=>{
+    const isBull=m.avgRet>0;
+    const retCls=isBull?'c-bull':'c-bear';
+    const todayCls=m.todayPct>=0?'c-bull':'c-bear';
+    const smiDisp=m.smiNow!==null?`<span class="${m.smiNow>20?'c-bull':m.smiNow<-20?'c-bear':'c-amb'}">${m.smiNow}</span>`:'—';
+    const sigDisp=m.sigObj?sigBadge(m.sigObj.signal):'<span class="c-dim">None</span>';
+    const consBadge=m.consistency>=80?'<span class="b b-bull">'+m.consistency+'%</span>':m.consistency>=60?'<span class="b b-amb">'+m.consistency+'%</span>':'<span class="b b-dim">'+m.consistency+'%</span>';
+    return`<tr>
+      <td class="c-dim">${i+1}</td>
+      <td><strong>${m.sym}</strong></td>
+      <td style="font-size:8px;max-width:80px;overflow:hidden;text-overflow:ellipsis">${m.sector}</td>
+      <td class="c-dim">₹${m.prevClose.toFixed(2)}</td>
+      <td>₹${m.latestClose.toFixed(2)}</td>
+      <td class="${todayCls}">${m.todayPct>=0?'+':''}${m.todayPct.toFixed(2)}%</td>
+      <td class="${retCls}"><strong>${m.avgRet>=0?'+':''}${m.avgRet.toFixed(2)}%</strong></td>
+      <td>${consBadge}</td>
+      <td class="${retCls}">${m.daysAbove}/${m.lookback}</td>
+      <td>${sigDisp}</td>
+      <td>${smiDisp}</td>
+      <td>${m.pfStatus}</td>
+    </tr>`;
+  }).join('');
+}
+
+function exportDailyMoversCSV(){
+  if(!Object.keys(allStockData).length){toast('No data to export','err');return}
+  const rows=['Symbol,Sector,PrevClose,LatestClose,TodayPct,AvgPctPerDay,Consistency,Signal,SMI'];
+  document.querySelectorAll('#dmBody tr').forEach(tr=>{
+    const cells=[...tr.querySelectorAll('td')];
+    if(cells.length<11)return;
+    rows.push([cells[1].textContent.trim(),cells[2].textContent.trim(),cells[3].textContent.replace('₹','').trim(),cells[4].textContent.replace('₹','').trim(),cells[5].textContent.trim(),cells[6].textContent.trim(),cells[7].textContent.trim(),cells[9].textContent.trim(),cells[10].textContent.trim()].join(','));
+  });
+  const blob=new Blob([rows.join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`nandi_daily_movers_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+  toast('Daily movers CSV exported','ok');
+}
+
+// ═══════════════════════════════════════════════════════════, Exit
 // ═══════════════════════════════════════════════════════════
 let _brokerData={orders:[],positions:[],holdings:[],gtt:[]};
 
