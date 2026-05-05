@@ -166,7 +166,11 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
 
 /* TOP 25 */
 .top25-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.top25-panel{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.top25-panel.collapsed .tw{display:none}
+.top25-panel.collapsed .top25-hdr{border-bottom:none}
+.top25-grid.single-col{grid-template-columns:1fr}
+.top25-panel.hidden{display:none}
+.top25-panel.expanded{grid-column:1/-1}
 .top25-hdr{padding:8px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)}
 .top25-hdr.bull{background:linear-gradient(90deg,rgba(5,150,105,.08),transparent)}
 .top25-hdr.bear{background:linear-gradient(90deg,rgba(220,38,38,.08),transparent)}
@@ -457,27 +461,35 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
 <!-- PAGE 1: SCANNER -->
 <div class="page active" id="page-scanner">
   <div class="top25-grid" id="top25Grid" style="display:none">
-    <div class="top25-panel">
-      <div class="top25-hdr bull">
-        <div class="top25-title c-bull"><i class="fas fa-arrow-trend-up"></i> Top 50 BUY Signals Today</div>
-        <div style="margin-left:auto;display:flex;gap:5px">
+    <!-- BUY PANEL -->
+    <div class="top25-panel" id="buyPanel">
+      <div class="top25-hdr bull" style="cursor:pointer" onclick="toggleTop25Panel('buy')">
+        <div class="top25-title c-bull"><i class="fas fa-arrow-trend-up"></i> Top 50 BUY Signals Today <span id="buyCount" class="pill p-bull" style="font-size:8px;margin-left:6px"></span></div>
+        <div style="margin-left:auto;display:flex;gap:5px;align-items:center" onclick="event.stopPropagation()">
           <button class="btn btn-d" style="font-size:8px;padding:2px 7px" onclick="sortTop25('buy','score')">Score</button>
           <button class="btn btn-d" style="font-size:8px;padding:2px 7px" onclick="sortTop25('buy','kelly')">Kelly</button>
           <button class="btn btn-d" style="font-size:8px;padding:2px 7px" onclick="sortTop25('buy','rr')">R:R</button>
+          <button class="btn btn-g" style="font-size:8px;padding:2px 9px" onclick="exportTop25CSV('buy')"><i class="fas fa-download"></i></button>
+          <button class="btn btn-d" style="font-size:8px;padding:2px 9px" id="buyExpandBtn" onclick="event.stopPropagation();expandTop25('buy')" title="Full width view">⛶</button>
+          <span id="buyCollapseArrow" style="font-size:11px;color:var(--text2);margin-left:4px">▲</span>
         </div>
       </div>
-      <div class="tw"><table id="top25BuyTbl"><thead><tr><th>#</th><th>Symbol</th><th>Sig</th><th>Score</th><th>Concord</th><th id="thTop25BuyZone">250d Zone</th><th>HVP</th><th>CMP</th><th>TP +2.0%</th><th>SL -3.5%</th><th>R:R</th><th>HistWR%</th><th>Kelly%</th><th>250d</th><th>Order</th></tr></thead><tbody id="top25BuyBody"></tbody></table></div>
+      <div id="buyTableWrap" class="tw"><table id="top25BuyTbl"><thead><tr><th>#</th><th>Symbol</th><th>Sig</th><th>Score</th><th>Align</th><th id="thTop25BuyZone">250d Zone</th><th>HVP</th><th>CMP ₹</th><th>TP ₹</th><th>SL ₹</th><th>R:R</th><th>HistWR%</th><th>Kelly%</th><th style="color:var(--amber)">250d Ret%</th><th>Order</th></tr></thead><tbody id="top25BuyBody"></tbody></table></div>
     </div>
-    <div class="top25-panel">
-      <div class="top25-hdr bear">
-        <div class="top25-title c-bear"><i class="fas fa-arrow-trend-down"></i> Top 50 SELL Signals Today</div>
-        <div style="margin-left:auto;display:flex;gap:5px">
+    <!-- SELL PANEL -->
+    <div class="top25-panel" id="sellPanel">
+      <div class="top25-hdr bear" style="cursor:pointer" onclick="toggleTop25Panel('sell')">
+        <div class="top25-title c-bear"><i class="fas fa-arrow-trend-down"></i> Top 50 SELL Signals Today <span id="sellCount" class="pill p-bear" style="font-size:8px;margin-left:6px"></span></div>
+        <div style="margin-left:auto;display:flex;gap:5px;align-items:center" onclick="event.stopPropagation()">
           <button class="btn btn-d" style="font-size:8px;padding:2px 7px" onclick="sortTop25('sell','score')">Score</button>
           <button class="btn btn-d" style="font-size:8px;padding:2px 7px" onclick="sortTop25('sell','kelly')">Kelly</button>
           <button class="btn btn-d" style="font-size:8px;padding:2px 7px" onclick="sortTop25('sell','rr')">R:R</button>
+          <button class="btn btn-r" style="font-size:8px;padding:2px 9px" onclick="exportTop25CSV('sell')"><i class="fas fa-download"></i></button>
+          <button class="btn btn-d" style="font-size:8px;padding:2px 9px" id="sellExpandBtn" onclick="event.stopPropagation();expandTop25('sell')" title="Full width view">⛶</button>
+          <span id="sellCollapseArrow" style="font-size:11px;color:var(--text2);margin-left:4px">▲</span>
         </div>
       </div>
-      <div class="tw"><table id="top25SellTbl"><thead><tr><th>#</th><th>Symbol</th><th>Sig</th><th>Score</th><th>Concord</th><th id="thTop25SellZone">250d Zone</th><th>HVP</th><th>CMP</th><th>TP +2.0%</th><th>SL -3.5%</th><th>R:R</th><th>HistWR%</th><th>Kelly%</th><th>250d</th><th>Order</th></tr></thead><tbody id="top25SellBody"></tbody></table></div>
+      <div id="sellTableWrap" class="tw"><table id="top25SellTbl"><thead><tr><th>#</th><th>Symbol</th><th>Sig</th><th>Score</th><th>Align</th><th id="thTop25SellZone">250d Zone</th><th>HVP</th><th>CMP ₹</th><th>TP ₹</th><th>SL ₹</th><th>R:R</th><th>HistWR%</th><th>Kelly%</th><th style="color:var(--amber)">250d Ret%</th><th>Order</th></tr></thead><tbody id="top25SellBody"></tbody></table></div>
     </div>
   </div>
   <div class="insights-strip" id="insightStrip" style="display:none"></div>
@@ -1772,6 +1784,7 @@ async function processAll(bySymbol) {
       setProgress(50+Math.round(processed/stockSyms.length*40),`Signals: ${processed}/${stockSyms.length}…`);
       await sleep(0);
     }
+    try {
     const info=bySymbol[sym];
     const rows=info.rows, closes=rows.map(r=>r.cl);
     const highs=rows.map(r=>r.hi), lows=rows.map(r=>r.lo);
@@ -1784,30 +1797,24 @@ async function processAll(bySymbol) {
     const n=closes.length-1;
     if(h9[n]===null||h10[n]===null)continue;
 
-    // ── Band zone — single calc, exact IRAVAT ──
     const bd = calcBands(closes);
     if (!bd) continue;
     const bandZone = bd.bandZone;
 
-    // ── Signal — exact IRAVAT ──
     const signal = detectSALT(h9, h10, smi, smiSig, bandZone);
     if (signal === 'WAIT') continue;
 
-    // ── HVP (NANDI extra — kept) ──
     const hvLast=hvs[n]||15;
     const hvArr=hvs.filter(v=>v!==null);
     const hvMax=hvArr.length?Math.max(...hvArr):hvLast*1.5;
     const hvMin=hvArr.length?Math.min(...hvArr):hvLast*0.5;
     const hvp=hvMax>hvMin?Math.round((hvLast-hvMin)/(hvMax-hvMin)*100):50;
 
-    // ── TP/SL — band-anchored, exact IRAVAT ──
     const cmp = closes[n], atr = atrs[n] || cmp * 0.02;
     let tpsl = calcTpSl(signal, cmp, atr, bd);
     let tp = tpsl.tp, sl = tpsl.sl, tpSlSource = 'BAND';
-    // Learned override (NANDI intelligence layer — kept on top)
     const learned = getLearnedTPSL(sym, cmp, atr);
     if (learned) { tp = learned.tp; sl = learned.sl; tpSlSource = learned.source; }
-    // Fallback to PCT if band calc failed
     if (!tp || !sl) {
       if (signal.startsWith('B')) { tp = parseFloat((cmp*(1+PCT_TP)).toFixed(2)); sl = parseFloat((cmp*(1-PCT_SL)).toFixed(2)); }
       else { tp = parseFloat((cmp*(1-PCT_TP)).toFixed(2)); sl = parseFloat((cmp*(1+PCT_SL)).toFixed(2)); }
@@ -1815,14 +1822,10 @@ async function processAll(bySymbol) {
     }
     const rr = sl > 0 ? parseFloat((Math.abs(tp-cmp)/Math.abs(cmp-sl)).toFixed(2)) : 1;
 
-    // ── Weekly trend per-stock + barsAgo — exact IRAVAT ──
     const weeklyTrend = calcWeeklyTrend(info.rows);
     const barsAgo     = calcBarsAgo(h9, h10, smi, smiSig, bandZone, signal);
-
-    // ── Score — exact IRAVAT calcScore ──
     const score = calcScore(signal, bandZone, barsAgo, weeklyTrend, rr);
 
-    // ── NANDI intelligence layer ──
     const secBrd    = sectorBreadth[info.sector] || {pct:50};
     const prevSig   = prevSigMap[sym] || null;
     const ret250    = stockReturns[sym] ? stockReturns[sym].ret_250 : null;
@@ -1833,7 +1836,6 @@ async function processAll(bySymbol) {
     const earnProx  = checkEarningProximity(sym, rows[n].date, 15);
     const mbSc      = computeMBScore(sym, bySymbol);
 
-    // ── FEEDBACK LOOP B: Context suppression/boost ──
     const ctxKey = buildCtxKey(signal, mktRegime, getBkt(secBrd.pct||50,40,60), getBkt(hvp||50,30,60));
     const ctx    = contextWRMap[ctxKey];
     let ctxAdj   = 0;
@@ -1843,10 +1845,24 @@ async function processAll(bySymbol) {
     }
     const finalScore = Math.min(100, Math.max(0, score + ctxAdj));
 
+    const regime_alignment=(function(){
+      var b=signal.startsWith('B');
+      if(overallRegime==='full')  return b?'aligned':'contrarian';
+      if(overallRegime==='bear')  return b?'contrarian':'aligned';
+      var nt=(regimeData['NSEI']||regimeData['CRSLDX']||{trend:'flat'}).trend;
+      if(nt==='bull') return b?'partial':'contrarian';
+      if(nt==='bear') return b?'contrarian':'partial';
+      return 'neutral';
+    })();
+    const index_alignments=(function(){
+      var b=signal.startsWith('B'),res={},ks=Object.keys(regimeData);
+      for(var i=0;i<ks.length;i++){var rd=regimeData[ks[i]];res[ks[i]]=(b&&rd.trend==='bull')||(!b&&rd.trend==='bear')?'with':rd.trend==='flat'?'neutral':'against';}
+      return res;
+    })();
+
     const sigObj = {
       symbol:sym, sector:info.sector, index:info.index,
       signal, score:finalScore, raw_score:score, ctx_adj:ctxAdj, band_zone:bandZone,
-      // band columns kept for table display (all same value now — primary LB)
       band_30:bandZone, band_60:bandZone, band_100:bandZone, band_250:bandZone,
       band_primary:bandZone,
       wr_lookup:WR_LOOKUP[signal+'|'+bandZone]||null,
@@ -1856,31 +1872,20 @@ async function processAll(bySymbol) {
       cmp, tp, sl, rr, atr_entry:parseFloat(atr.toFixed(2)),
       tpsl_source:tpSlSource,
       entry_date:rows[n].date,
+      trigger_price:cmp,
+      smi_last:parseFloat((smi[n]||0).toFixed(1)), smi_sig_last:parseFloat((smiSig[n]||0).toFixed(1)),
+      prev_close:closes.length>=2?closes[n-1]:null,
       band_num: bd.curBand + 1,
       kelly_pct:kelly, learnedWR, seqWR, prev_signal:prevSig,
       nsei_corr:nseiCorr, mb_score:mbSc,
       earn_prox:earnProx, best_indicator:globalBestInd,
       ret_250:ret250,
-      // IRAVAT extras — used for display
-      weeklyTrend, barsAgo, weeklyAligned:(signal.startsWith('B')&&weeklyTrend==='bull')||(signal.startsWith('S')&&weeklyTrend==='bear'),
-      regime_alignment:(function(){
-        var b=signal.startsWith('B');
-        if(overallRegime==='full')  return b?'aligned':'contrarian';
-        if(overallRegime==='bear')  return b?'contrarian':'aligned';
-        var nt=(regimeData['NSEI']||regimeData['CRSLDX']||{trend:'flat'}).trend;
-        if(nt==='bull') return b?'partial':'contrarian';
-        if(nt==='bear') return b?'contrarian':'partial';
-        return 'neutral';
-      })(),
-      index_alignments:(function(){
-        var b=signal.startsWith('B'),res={},ks=Object.keys(regimeData);
-        for(var i=0;i<ks.length;i++){var rd=regimeData[ks[i]];res[ks[i]]=(b&&rd.trend==='bull')||(!b&&rd.trend==='bear')?'with':rd.trend==='flat'?'neutral':'against';}
-        return res;
-      })(),
+      weeklyTrend, barsAgo,
+      weeklyAligned:(signal.startsWith('B')&&weeklyTrend==='bull')||(signal.startsWith('S')&&weeklyTrend==='bear'),
+      regime_alignment, index_alignments,
     };
     allSignals.push(sigObj);
 
-    // Add to ledger (if not already there for this date)
     const alreadyIn=ledger.find(r=>r.symbol===sym&&r.entry_date===rows[n].date&&r.signal===signal);
     if(!alreadyIn){
       const rec={
@@ -1893,11 +1898,16 @@ async function processAll(bySymbol) {
         status:'open',outcome:'open',
         exit_price:null,exit_date:null,pnl_pct:null,bars_to_exit:null,
         prev_signal:prevSig,best_indicator:globalBestInd,
-        avg_bef_exit:null
+        avg_bef_exit:null,
+        regime_at_entry:regime_alignment,
+        index_alignments_at_entry:index_alignments
       };
-      rec.regime_at_entry=rec.regime_alignment||'neutral';rec.index_alignments_at_entry=rec.index_alignments||{};
       ledger.push(rec);
       newAdded++;
+    }
+    } catch(sigErr) {
+      zdLog(`Signal error on ${sym}: ${sigErr.message}`);
+      // Continue processing next stock — don't let one bad stock crash everything
     }
   }
 
@@ -2956,9 +2966,49 @@ function renderTop25() {
       <td>${zdLiveMode?`<button class="${s.signal.startsWith('B')?'ob-buy':'ob-sell'}" onclick="showOrderModal('${s.symbol}','${s.signal.startsWith('B')?'BUY':'SELL'}',${s.cmp},${s.tp},${s.sl},1)">${s.signal.startsWith('B')?'▲ BUY':'▼ SELL'}</button>`:'—'}</td>
     </tr>`;
   };
-  document.getElementById('top25BuyBody').innerHTML=buys.length?buys.map(row).join(''):`<tr><td colspan="14" class="empty">No buy signals today</td></tr>`;
-  document.getElementById('top25SellBody').innerHTML=sells.length?sells.map(row).join(''):`<tr><td colspan="14" class="empty">No sell signals today</td></tr>`;
+  document.getElementById('top25BuyBody').innerHTML=buys.length?buys.map(row).join(''):`<tr><td colspan="15" class="empty">No buy signals today</td></tr>`;
+  document.getElementById('top25SellBody').innerHTML=sells.length?sells.map(row).join(''):`<tr><td colspan="15" class="empty">No sell signals today</td></tr>`;
+  // Update count badges
+  const bc=document.getElementById('buyCount');
+  const sc=document.getElementById('sellCount');
+  if(bc)bc.textContent=buys.length;
+  if(sc)sc.textContent=sells.length;
 }
+function toggleTop25Panel(type){
+  const panel=document.getElementById(type==='buy'?'buyPanel':'sellPanel');
+  const arrow=document.getElementById(type==='buy'?'buyCollapseArrow':'sellCollapseArrow');
+  const isCollapsed=panel.classList.toggle('collapsed');
+  if(arrow) arrow.textContent=isCollapsed?'▼':'▲';
+}
+
+function expandTop25(type){
+  const buyPanel=document.getElementById('buyPanel');
+  const sellPanel=document.getElementById('sellPanel');
+  const grid=document.getElementById('top25Grid');
+  const btn=document.getElementById(type==='buy'?'buyExpandBtn':'sellExpandBtn');
+  const isExpanded=buyPanel.classList.contains('expanded')||sellPanel.classList.contains('expanded');
+  // Reset both first
+  buyPanel.classList.remove('expanded','hidden');
+  sellPanel.classList.remove('expanded','hidden');
+  document.getElementById('buyExpandBtn').textContent='⛶';
+  document.getElementById('sellExpandBtn').textContent='⛶';
+  grid.style.gridTemplateColumns='';
+  if(!isExpanded){
+    // Expand clicked panel full width, hide the other
+    if(type==='buy'){
+      buyPanel.classList.add('expanded');
+      sellPanel.classList.add('hidden');
+    } else {
+      sellPanel.classList.add('expanded');
+      buyPanel.classList.add('hidden');
+    }
+    grid.style.gridTemplateColumns='1fr';
+    btn.textContent='⊠'; // collapse icon
+    document.getElementById(type==='buy'?'buyExpandBtn':'sellExpandBtn').textContent='⊠';
+  }
+  // If already expanded — reset to side-by-side (handled above)
+}
+
 function sortTop25(type,col){if(type==='buy')top25SortBuy=col;else top25SortSell=col;renderTop25()}
 
 function getTPSLNote() {
@@ -3828,22 +3878,71 @@ async function confirmPlaceOrder(){
 
 async function placeGTT(sym,qty,entryPx,tpPx,slPx,exitTxn,product,resultEl,logId){
   try{
-    const gttBody={type:'two-leg',condition:{exchange:'NSE',tradingsymbol:sym,trigger_values:[slPx,tpPx],last_price:entryPx},orders:[{exchange:'NSE',tradingsymbol:sym,transaction_type:exitTxn,quantity:qty,order_type:'LIMIT',product:product,price:slPx},{exchange:'NSE',tradingsymbol:sym,transaction_type:exitTxn,quantity:qty,order_type:'LIMIT',product:product,price:tpPx}]};
-    const res=await fetch(`${ZD_WORKER}/gtt`,{method:'POST',headers:{'X-Kite-Version':'3','Authorization':`token ${zdApiKey}:${zdToken}`,'Content-Type':'application/json'},body:JSON.stringify(gttBody)});
-    const j=await res.json();
+    // FIX 1: last_price MUST be current market price, not entry price
+    // Zerodha rejects/disables GTT if last_price is stale or equals limit price
+    let lastPrice = zdPrices[sym] || zdPrices['NSE:'+sym] || entryPx;
+    // If not in cache, fetch live LTP now
+    if(!zdPrices[sym] && !zdPrices['NSE:'+sym]){
+      try{
+        const ltpR=await fetch(`${ZD_WORKER}/kite/quote/ltp?i=${encodeURIComponent('NSE:'+sym)}`,{
+          headers:{'X-Kite-Version':'3','Authorization':`token ${zdApiKey}:${zdToken}`}
+        });
+        const ltpJ=await ltpR.json();
+        if(ltpJ.data){const k=Object.keys(ltpJ.data)[0];if(k&&ltpJ.data[k].last_price)lastPrice=ltpJ.data[k].last_price;}
+      }catch(ltpErr){zdLog('GTT LTP fallback error: '+ltpErr.message);}
+    }
+
+    // FIX 2: correct endpoint — /kite/gtt/triggers, NOT /gtt
+    // trigger_values: [lower_trigger, upper_trigger] → [SL, TP] for long exit
+    const gttBody={
+      type:'two-leg',
+      condition:{
+        exchange:'NSE',
+        tradingsymbol:sym,
+        trigger_values:[slPx, tpPx],
+        last_price:parseFloat(lastPrice.toFixed(2))
+      },
+      orders:[
+        // Leg 1: SL — limit slightly below trigger for fill certainty
+        {exchange:'NSE',tradingsymbol:sym,transaction_type:exitTxn,quantity:qty,order_type:'LIMIT',product:product,price:parseFloat((slPx*0.995).toFixed(2))},
+        // Leg 2: TP — limit slightly below trigger for fill certainty
+        {exchange:'NSE',tradingsymbol:sym,transaction_type:exitTxn,quantity:qty,order_type:'LIMIT',product:product,price:parseFloat((tpPx*0.995).toFixed(2))}
+      ]
+    };
+    zdLog(`GTT payload: last_price=${lastPrice.toFixed(2)}, SL=${slPx}, TP=${tpPx}`);
+
+    const res=await fetch(`${ZD_WORKER}/kite/gtt/triggers`,{
+      method:'POST',
+      headers:{'X-Kite-Version':'3','Authorization':`token ${zdApiKey}:${zdToken}`,'Content-Type':'application/json'},
+      body:JSON.stringify(gttBody)
+    });
+
+    // FIX 3: safe JSON parse — raw response logged on failure
+    let j;
+    try{ j=await res.json(); }
+    catch(parseErr){
+      const raw=await res.text().catch(()=>'(unreadable)');
+      zdLog(`GTT JSON parse error: ${parseErr.message} | HTTP ${res.status} | raw: ${raw.slice(0,300)}`);
+      if(resultEl)resultEl.innerHTML+=`<div style="margin-top:6px;color:var(--amber)">⚠ GTT response error (HTTP ${res.status}) — check Kite dashboard manually</div>`;
+      toast('GTT response error — check Kite dashboard','err');
+      return;
+    }
+
     if(j.status==='success'&&j.data&&j.data.trigger_id){
       const gid=j.data.trigger_id;
       if(resultEl)resultEl.innerHTML+=`<div style="margin-top:6px;color:var(--teal)">🎯 GTT placed ✓ — TP ₹${tpPx} (+1.5%) | SL ₹${slPx} (-3.5%) | GTT ID: <strong>${gid}</strong></div>`;
       toast(`GTT set: TP ₹${tpPx} / SL ₹${slPx} ✓`,'ok');
-      zdLog(`GTT OCO ${sym} → TP ₹${tpPx} / SL ₹${slPx} | ID ${gid}`);
+      zdLog(`GTT OCO ${sym} → TP ₹${tpPx} / SL ₹${slPx} | CMP used=${lastPrice.toFixed(2)} | ID ${gid}`);
       if(logId){const rec=orderLog.find(r=>r.id===logId);if(rec){rec.gtt_id=gid;saveOrderLog();}}
     } else {
-      const msg=j.message||JSON.stringify(j);
-      if(resultEl)resultEl.innerHTML+=`<div style="margin-top:6px;color:var(--amber)">⚠ GTT failed: ${msg} — set manually</div>`;
+      const msg=j.message||j.error_type||JSON.stringify(j);
+      if(resultEl)resultEl.innerHTML+=`<div style="margin-top:6px;color:var(--amber)">⚠ GTT failed: ${msg} — set manually on Kite</div>`;
       toast(`GTT failed: ${msg}`,'err');
+      zdLog(`GTT FAIL ${sym}: ${msg} | payload: ${JSON.stringify(gttBody).slice(0,200)}`);
     }
   }catch(e){
     if(resultEl)resultEl.innerHTML+=`<div style="margin-top:6px;color:var(--amber)">⚠ GTT error: ${e.message}</div>`;
+    zdLog('GTT exception: '+e.message);
   }
 }
 
