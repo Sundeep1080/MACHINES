@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#d97706">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="NANDI v8">
+<meta name="apple-mobile-web-app-title" content="MACHINES v8">
 <link rel="manifest" href="manifest.json">
-<title>NANDI v8 · Self-Learning Signal Intelligence</title>
+<title>MACHINES v8 · Self-Learning Signal Intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -383,9 +383,9 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
 <!-- HEADER -->
 <div class="masthead">
   <div class="brand">
-    <div class="brand-icon">N8</div>
+    <div class="brand-icon">M8</div>
     <div class="brand-text">
-      <h1>NANDI</h1>
+      <h1>MACHINES</h1>
       <p>v8 · Self-Learning Signal Intelligence · NSE</p>
     </div>
   </div>
@@ -5315,28 +5315,42 @@ function sbmSwitch(mode){
 function renderSBM(){
   const container = document.getElementById('sbmMatrix');
   if(!container) return;
-  _sbmMode === 'historic' ? _sbmRenderHistoric(container) : _sbmRenderDaily(container);
+  if(_sbmMode === 'historic'){
+    container.innerHTML = '<div style="padding:20px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--text2)">⏳ Loading from IndexedDB…</div>';
+    _sbmRenderHistoric(container);
+  } else {
+    _sbmRenderDaily(container);
+  }
 }
 
-// ── HISTORIC: build from ledger ─────────────────────────
-function _sbmRenderHistoric(container){
-  const ledger   = loadLedger();
-  const resolved = ledger.filter(r => r.outcome==='win'||r.outcome==='loss');
+// ── HISTORIC: build from ledger (async IDB) ─────────────
+async function _sbmRenderHistoric(container){
+  // Use async IDB load — localStorage only has last 200, IDB has everything
+  let ledger = [];
+  try { ledger = await loadLedgerAsync(); } catch(e) { ledger = loadLedger(); }
 
-  // mat[sig][band] = {w,l,n,pnls[]}
+  // Include ALL resolved trades (win/loss) + also open trades that have pnl (manually exited)
+  const resolved = ledger.filter(r =>
+    r.outcome==='win' || r.outcome==='loss' ||
+    (r.status==='win') || (r.status==='loss') ||
+    (r.pnl_pct!==null && r.outcome!=='open')
+  );
+
   const mat = {};
   SBM_SIGS.forEach(s => { mat[s]={}; SBM_BANDS.forEach(b => { mat[s][b]={w:0,l:0,n:0,pnls:[]}; }); });
 
   resolved.forEach(r => {
-    const sig=r.signal, bn=r.band_num||0;
-    if(!SBM_SIGS.includes(sig)||bn<1||bn>10) return;
+    const sig = r.signal;
+    const bn  = r.band_num || 0;
+    if(!SBM_SIGS.includes(sig) || bn < 1 || bn > 10) return;
+    const isWin = r.outcome==='win' || r.status==='win' || (r.pnl_pct!==null && r.pnl_pct > 0);
     mat[sig][bn].n++;
-    r.outcome==='win' ? mat[sig][bn].w++ : mat[sig][bn].l++;
+    isWin ? mat[sig][bn].w++ : mat[sig][bn].l++;
     if(r.pnl_pct!==null) mat[sig][bn].pnls.push(r.pnl_pct);
   });
 
   const metaEl = document.getElementById('sbmMeta');
-  if(metaEl) metaEl.textContent = `${resolved.length} resolved trades · WR colour vs 63.6% breakeven · ★ = WR ≥ 70%`;
+  if(metaEl) metaEl.textContent = `${resolved.length} resolved trades · WR colour vs 63.6% breakeven · ★ = WR ≥ 70% · Click any cell to drill down`;
 
   container.innerHTML = _buildMatrixHTML(mat,'historic');
 }
