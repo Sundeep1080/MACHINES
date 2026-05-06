@@ -557,6 +557,7 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
         <button class="btn btn-a" onclick="createDailyPortfolios()"><i class="fas fa-plus"></i> Create Today's Portfolios</button>
         <button class="btn btn-g" onclick="updateDPFPnL()"><i class="fas fa-sync"></i> Update P&L</button>
         <button class="btn btn-r" onclick="dissolvePortfolios()"><i class="fas fa-check-circle"></i> Dissolve Expired</button>
+        <button class="btn btn-d" onclick="exportPortfolioCSV()"><i class="fas fa-download"></i> Export Active CSV</button>
       </div>
     </div>
   </div>
@@ -831,26 +832,27 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
       <i class="fas fa-th"></i>&nbsp;Signal × Band Matrix — Win Rate by Trigger & Band Position
     </div>
     <div style="font-family:var(--mono);font-size:8px;color:var(--text2);padding:5px 10px;background:var(--bg3);border-bottom:1px solid var(--border);line-height:1.7">
-      Rows = signal triggers · Columns = band B1(lowest price) … B10(highest price) · 
-      🟢 WR ≥ 63.6% profitable · 🟡 50–63.5% marginal · 🔴 &lt;50% avoid · Click any cell = drill down to stocks
+      Rows = signal triggers · Columns = band B1(lowest) … B10(highest) · 🟢 WR ≥ 63.6% EV+ · 🟡 50–63.5% marginal · 🔴 &lt;50% avoid · Click any cell = drill down
     </div>
-    <!-- View toggle + meta -->
     <div style="display:flex;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border);align-items:center;flex-wrap:wrap">
-      <button class="btn btn-a" id="sbmHistBtn" onclick="sbmSwitch('historic')" style="font-size:9px">📚 Historic WR (Ledger)</button>
-      <button class="btn btn-d" id="sbmDailyBtn" onclick="sbmSwitch('daily')" style="font-size:9px">⚡ Daily Signals (Today)</button>
-      <span style="font-family:var(--mono);font-size:8px;color:var(--text2);margin-left:6px" id="sbmMeta"></span>
+      <button class="btn btn-a" id="sbmBacktestBtn" onclick="sbmSwitch('backtest')" style="font-size:9px">🔬 Backtest (250d CSV)</button>
+      <button class="btn btn-d" id="sbmHistBtn"     onclick="sbmSwitch('historic')" style="font-size:9px">📚 Ledger (Resolved)</button>
+      <button class="btn btn-d" id="sbmDailyBtn"    onclick="sbmSwitch('daily')"   style="font-size:9px">⚡ Today's Signals</button>
+      <span style="font-family:var(--mono);font-size:8px;color:var(--text2);margin-left:6px" id="sbmMeta">Load CSV data then click Backtest</span>
       <button class="btn btn-d" style="margin-left:auto;font-size:8px" onclick="exportSBMCSV()"><i class="fas fa-download"></i> Export CSV</button>
     </div>
-    <!-- Matrix -->
+    <div id="sbmProgress" style="display:none;padding:8px 12px;font-family:var(--mono);font-size:9px;color:var(--amber);background:var(--amber-g);border-bottom:1px solid rgba(217,119,6,.2)">
+      ⏳ <span id="sbmProgressText">Scanning CSV data…</span>
+      <div style="width:100%;height:3px;background:var(--border);border-radius:2px;margin-top:4px;overflow:hidden"><div id="sbmProgressBar" style="height:3px;background:var(--amber);width:0%;transition:width .3s;border-radius:2px"></div></div>
+    </div>
     <div class="tw" id="sbmMatrix" style="padding:4px 0"></div>
-    <!-- Drill-down panel -->
     <div id="sbmDrilldown" style="display:none;border-top:2px solid var(--amber);margin-top:4px">
       <div style="padding:8px 12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--amber)" id="sbmDrillTitle">—</div>
         <button class="btn btn-d" style="font-size:8px" onclick="document.getElementById('sbmDrilldown').style.display='none'">✕ Close</button>
       </div>
       <div class="tw"><table>
-        <thead><tr><th>Symbol</th><th>Sector</th><th>Signal</th><th>Band</th><th>Zone</th><th>Score</th><th>CMP ₹</th><th>TP ₹</th><th>SL ₹</th><th>Entry Date</th><th>Outcome</th><th>P&amp;L %</th></tr></thead>
+        <thead><tr><th>Symbol</th><th>Sector</th><th>Signal</th><th>Band</th><th>Zone</th><th>Entry Date</th><th>Entry ₹</th><th>TP ₹</th><th>SL ₹</th><th>Outcome</th><th>Exit ₹</th><th>P&amp;L %</th><th>Bars</th></tr></thead>
         <tbody id="sbmDrillBody"></tbody>
       </table></div>
     </div>
@@ -3233,7 +3235,8 @@ function renderPFCards() {
           <div class="pf-title ${pf.type==='buy'?'c-bull':'c-bear'}">${pf.type.toUpperCase()} Portfolio · ${pf.day}</div>
           <div class="pf-meta">${pf.stocks.length} stocks · ${pf.sectors?pf.sectors.length+' sectors · ':''} Score≥${pf.minScoreUsed||'—'} · ${pf.regimeAtCreation?pf.regimeAtCreation.toUpperCase()+' regime · ':''} Dissolves ${pf.dissolveDay} ${pf.dissolveDate} · ${(function(){var s=pf.alignmentSummary||{},p=[];if(s.aligned>0)p.push('<span style="color:var(--bull)">'+s.aligned+' WITH</span>');if(s.partial>0)p.push('<span style="color:var(--amber)">'+s.partial+' PART</span>');if(s.contrarian>0)p.push('<span style="color:var(--bear)">'+s.contrarian+' CONTRA</span>');return p.join(' · ')||'';})()} </div>
         </div>
-        <div style="text-align:right">
+        <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <button class="${pf.type==='buy'?'btn btn-g':'btn btn-r'}" style="font-size:8px;padding:2px 9px" onclick="exportSinglePortfolioCSV('${pf.id||pf.type+(pf.createdDate||'')}')"><i class="fas fa-download"></i> CSV</button>
           <div class="pf-stat"><label>P&L</label><span class="${pnlClass}">${pf.totalPnlPct>=0?'+':''}${pf.totalPnlPct}%</span></div>
           <div class="pf-meta c-dim">₹${(pf.totalPnl||0).toLocaleString('en-IN')}</div>
         </div>
@@ -5084,9 +5087,115 @@ function exportDailyMoversCSV(){
   toast('Daily movers CSV exported','ok');
 }
 
-// ═══════════════════════════════════════════════════════════, Exit
 // ═══════════════════════════════════════════════════════════
-let _brokerData={orders:[],positions:[],holdings:[],gtt:[]};
+// CSV EXPORT FUNCTIONS — all locations
+// ═══════════════════════════════════════════════════════════
+
+// Top 50 Buy/Sell signal tables
+function exportTop25CSV(type){
+  const list=type==='buy'?selectTop25(allSignals,'buy'):selectTop25(allSignals,'sell');
+  if(!list.length){toast('No '+type+' signals to export','err');return;}
+  const hdrs=['Symbol','Sector','Index','Signal','Score','Zone','HVP','Regime','Alignment','CMP','TP','SL','RR','Kelly%','HistWR%','250d_Ret%','WeeklyTrend','BarsAgo'];
+  const rows=list.map(s=>[
+    s.symbol,(s.sector||'').replace(/,/g,';'),s.index||'',s.signal,s.score,
+    s.band_zone||'',s.hvp,s.regime||'',s.regime_alignment||'',
+    s.cmp,(s.tp||0).toFixed(2),(s.sl||0).toFixed(2),s.rr,
+    s.kelly_pct||'',s.wr_lookup||'',s.ret_250||'',
+    s.weeklyTrend||'',s.barsAgo||0
+  ].join(','));
+  const blob=new Blob([[hdrs.join(','),...rows].join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='machines_top50_'+type+'_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+  toast('Top 50 '+type+' CSV exported ('+list.length+' stocks)','ok');
+}
+
+// All signals table
+function exportSignals(){
+  if(!sigFiltered.length){toast('No signals to export','err');return;}
+  const hdrs=['Symbol','Sector','Index','Signal','Score','Zone','HVP','Regime','CMP','TP','SL','RR','Kelly%','WR%','MB','SeqWR','NSEICorr','Ret250'];
+  const rows=sigFiltered.map(s=>[
+    s.symbol,(s.sector||'').replace(/,/g,';'),s.index||'',s.signal,s.score,
+    s.band_zone||'',s.hvp,s.regime||'',s.cmp,s.tp,s.sl,s.rr,
+    s.kelly_pct||'',s.learnedWR||'',s.mb_score||'',
+    s.seqWR||'',s.nsei_corr||'',s.ret_250||''
+  ].join(','));
+  const blob=new Blob([[hdrs.join(','),...rows].join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='machines_signals_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+  toast('All signals CSV exported ('+sigFiltered.length+' rows)','ok');
+}
+
+// Active portfolio — all or single
+function exportPortfolioCSV(){
+  const active=dailyPortfolios.filter(p=>p.status==='active');
+  if(!active.length){toast('No active portfolios','err');return;}
+  active.forEach((pf,idx)=>{
+    if(!pf.stocks||!pf.stocks.length)return;
+    setTimeout(()=>{
+      const hdrs=['Symbol','Sector','Signal','Score','EntryPrice','CMP','TP','SL','RR','Kelly%','Zone','PnL%','PnL_INR','Status'];
+      const rows=pf.stocks.map(s=>[
+        s.symbol,(s.sector||'').replace(/,/g,';'),s.signal,s.score||'',
+        (s.trigger_price||s.cmp||0).toFixed(2),(s.current_price||s.cmp||0).toFixed(2),
+        (s.tp||0).toFixed(2),(s.sl||0).toFixed(2),s.rr||'',
+        s.kelly_pct||'',s.band_zone||'',s.pnl_pct||0,s.pnl_amt||0,s.status||'open'
+      ].join(','));
+      const blob=new Blob([[hdrs.join(','),...rows].join('\n')],{type:'text/csv'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+      a.download='machines_pf_'+pf.type+'_'+(pf.createdDate||'')+'.csv';a.click();
+    },idx*400);
+  });
+  toast('Exporting '+active.length+' portfolio(s)','ok');
+}
+
+function exportSinglePortfolioCSV(pfId){
+  const pf=dailyPortfolios.find(p=>(p.id&&p.id===pfId)||(p.type+(p.createdDate||'')===pfId)||(p.day+(p.type||'')===pfId));
+  if(!pf||!pf.stocks||!pf.stocks.length){toast('Portfolio not found','err');return;}
+  const hdrs=['Symbol','Sector','Signal','Score','EntryPrice','CMP','TP','SL','RR','Kelly%','Zone','PnL%','PnL_INR','Status'];
+  const rows=pf.stocks.map(s=>[
+    s.symbol,(s.sector||'').replace(/,/g,';'),s.signal,s.score||'',
+    (s.trigger_price||s.cmp||0).toFixed(2),(s.current_price||s.cmp||0).toFixed(2),
+    (s.tp||0).toFixed(2),(s.sl||0).toFixed(2),s.rr||'',
+    s.kelly_pct||'',s.band_zone||'',s.pnl_pct||0,s.pnl_amt||0,s.status||'open'
+  ].join(','));
+  const blob=new Blob([[hdrs.join(','),...rows].join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='machines_pf_'+pf.type+'_'+(pf.createdDate||new Date().toISOString().slice(0,10))+'.csv';a.click();
+  toast(pf.type.toUpperCase()+' portfolio exported ('+pf.stocks.length+' stocks)','ok');
+}
+
+// Portfolio archive
+function exportPFArchive(){
+  if(!dpfArchive.length){toast('No archive to export','err');return;}
+  const hdrs=['Portfolio','Type','CreatedDate','ClosedDate','Symbol','Sector','Signal','EntryDate','Entry_Price','Exit_Price','Return_Pct','PnL_INR','TP','SL','Outcome','Score'];
+  const rows=[];
+  dpfArchive.forEach(pf=>{
+    (pf.stocks||[]).forEach(s=>{
+      const entryPx=s.trigger_price||s.cmp||0;
+      const exitPx=s.current_price||s.cmp||0;
+      let outcome='open';
+      if((s.pnl_pct||0)>0)outcome='PROFIT';
+      else if((s.pnl_pct||0)<0)outcome='LOSS';
+      rows.push([
+        pf.day||'',pf.type,pf.createdDate||'',pf.dissolvedDate||pf.dissolveDate||'',
+        s.symbol,(s.sector||'').replace(/,/g,';'),s.signal,
+        s.entry_date||pf.createdDate||'',
+        (entryPx).toFixed(2),(exitPx).toFixed(2),
+        (s.pnl_pct||0).toFixed(2),(s.pnl_amt||0).toFixed(0),
+        (s.tp||0).toFixed(2),(s.sl||0).toFixed(2),
+        outcome,s.score||0
+      ].join(','));
+    });
+  });
+  const blob=new Blob([[hdrs.join(','),...rows].join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='machines_archive_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+  toast('Archive exported ('+rows.length+' stock rows)','ok');
+}
+
+// ═══════════════════════════════════════════════════════════
+// BROKER PAGE — Orders, Positions, Holdings, GTT, Exit
+// ═══════════════════════════════════════════════════════════
 
 function switchBrokerTab(name){
   document.querySelectorAll('.brk-panel').forEach(p=>p.style.display='none');
@@ -5289,292 +5398,277 @@ function exportBrokerData(){
 // (patch showOrderModal to re-show it — done by checking at open time)
 
 // ═══════════════════════════════════════════════════════════
-// SIGNAL × BAND MATRIX
-// Rows: 8 triggers  Cols: B1(lowest)…B10(highest)
-// Historic view = WR% from ledger (self-learning)
-// Daily view    = signal count from today's allSignals
-// Click any cell → drill-down stock list
+// SIGNAL × BAND MATRIX — Full CSV Backtest Engine
+// Scans all stocks × all bars, detects every signal,
+// resolves TP/SL forward, builds WR% per signal×band
 // ═══════════════════════════════════════════════════════════
 const SBM_SIGS  = ['B1-OS','B1-MOM','B2','B3','S1-OB','S1-MOM','S2','S3'];
 const SBM_BANDS = [1,2,3,4,5,6,7,8,9,10];
-const SBM_ZONE  = {1:'REJ-Lo',2:'REJ-Lo',3:'Blw-VA',4:'Blw-VA',5:'VA',6:'VA',7:'Abv-VA',8:'Abv-VA',9:'REJ-Hi',10:'REJ-Hi'};
-const SBM_ZONE_FULL = {1:'rej_lo',2:'rej_lo',3:'below_va',4:'below_va',5:'va',6:'va',7:'above_va',8:'above_va',9:'rej_hi',10:'rej_hi'};
-let _sbmMode = 'historic';
+const SBM_ZONE_MAP = {1:'REJ Lo',2:'REJ Lo',3:'Blw-VA',4:'Blw-VA',5:'VA',6:'VA',7:'Abv-VA',8:'Abv-VA',9:'REJ Hi',10:'REJ Hi'};
+const SBM_ZONE_COL = {1:'var(--bull)',2:'var(--bull)',3:'var(--teal)',4:'var(--teal)',5:'var(--text2)',6:'var(--text2)',7:'var(--amber)',8:'var(--amber)',9:'var(--bear)',10:'var(--bear)'};
+
+let _sbmMode = 'backtest';
+let _sbmBacktestData = null; // cached after first run
+
+function _sbmSetBtns(){
+  [{id:'sbmBacktestBtn',m:'backtest'},{id:'sbmHistBtn',m:'historic'},{id:'sbmDailyBtn',m:'daily'}].forEach(x=>{
+    const b=document.getElementById(x.id);
+    if(b){b.className=_sbmMode===x.m?'btn btn-a':'btn btn-d';b.style.fontSize='9px';}
+  });
+}
 
 function sbmSwitch(mode){
-  _sbmMode = mode;
-  const hb = document.getElementById('sbmHistBtn');
-  const db = document.getElementById('sbmDailyBtn');
-  if(hb){ hb.className = mode==='historic'?'btn btn-a':'btn btn-d'; hb.style.fontSize='9px'; }
-  if(db){ db.className = mode==='daily'?'btn btn-a':'btn btn-d';    db.style.fontSize='9px'; }
-  const dd = document.getElementById('sbmDrilldown');
-  if(dd) dd.style.display = 'none';
+  _sbmMode=mode; _sbmSetBtns();
+  const dd=document.getElementById('sbmDrilldown');
+  if(dd)dd.style.display='none';
   renderSBM();
 }
 
 function renderSBM(){
-  const container = document.getElementById('sbmMatrix');
-  if(!container) return;
-  if(_sbmMode === 'historic'){
-    container.innerHTML = '<div style="padding:20px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--text2)">⏳ Loading from IndexedDB…</div>';
+  const container=document.getElementById('sbmMatrix');
+  if(!container)return;
+  if(_sbmMode==='backtest'){
+    if(_sbmBacktestData){ _sbmRenderMatrix(_sbmBacktestData,'backtest'); }
+    else if(Object.keys(allStockData).length){ _sbmRunBacktest(); }
+    else container.innerHTML='<div class="empty" style="padding:30px">Load CSV data then click 🔬 Backtest</div>';
+  } else if(_sbmMode==='historic'){
+    container.innerHTML='<div style="padding:16px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--text2)">⏳ Loading from IndexedDB…</div>';
     _sbmRenderHistoric(container);
   } else {
     _sbmRenderDaily(container);
   }
 }
 
-// ── HISTORIC: build from ledger (async IDB) ─────────────
-async function _sbmRenderHistoric(container){
-  // Use async IDB load — localStorage only has last 200, IDB has everything
-  let ledger = [];
-  try { ledger = await loadLedgerAsync(); } catch(e) { ledger = loadLedger(); }
-
-  // Include ALL resolved trades (win/loss) + also open trades that have pnl (manually exited)
-  const resolved = ledger.filter(r =>
-    r.outcome==='win' || r.outcome==='loss' ||
-    (r.status==='win') || (r.status==='loss') ||
-    (r.pnl_pct!==null && r.outcome!=='open')
-  );
-
-  const mat = {};
-  SBM_SIGS.forEach(s => { mat[s]={}; SBM_BANDS.forEach(b => { mat[s][b]={w:0,l:0,n:0,pnls:[]}; }); });
-
-  resolved.forEach(r => {
-    const sig = r.signal;
-    const bn  = r.band_num || 0;
-    if(!SBM_SIGS.includes(sig) || bn < 1 || bn > 10) return;
-    const isWin = r.outcome==='win' || r.status==='win' || (r.pnl_pct!==null && r.pnl_pct > 0);
-    mat[sig][bn].n++;
-    isWin ? mat[sig][bn].w++ : mat[sig][bn].l++;
-    if(r.pnl_pct!==null) mat[sig][bn].pnls.push(r.pnl_pct);
-  });
-
-  const metaEl = document.getElementById('sbmMeta');
-  if(metaEl) metaEl.textContent = `${resolved.length} resolved trades · WR colour vs 63.6% breakeven · ★ = WR ≥ 70% · Click any cell to drill down`;
-
-  container.innerHTML = _buildMatrixHTML(mat,'historic');
-}
-
-// ── DAILY: build from today's allSignals ────────────────
-function _sbmRenderDaily(container){
-  if(!allSignals.length){
-    container.innerHTML='<div class="empty">Load CSV data first to see today\'s signal matrix</div>';
-    const metaEl = document.getElementById('sbmMeta');
-    if(metaEl) metaEl.textContent = 'No data loaded';
-    return;
+// ── BACKTEST: scan full CSV, detect every signal, resolve TP/SL ──
+async function _sbmRunBacktest(){
+  const container = document.getElementById('sbmMatrix');
+  const prog      = document.getElementById('sbmProgress');
+  const progText  = document.getElementById('sbmProgressText');
+  const progBar   = document.getElementById('sbmProgressBar');
+  const meta      = document.getElementById('sbmMeta');
+  if(!Object.keys(allStockData).length){container.innerHTML='<div class="empty" style="padding:30px">Load CSV data first</div>';return;}
+  if(prog)prog.style.display='block';
+  container.innerHTML='';
+  const mat={};
+  SBM_SIGS.forEach(s=>{mat[s]={};SBM_BANDS.forEach(b=>{mat[s][b]={w:0,l:0,n:0,pnls:[],trades:[]};});});
+  const stockSyms=Object.keys(allStockData).filter(s=>allStockData[s].index!=='MAJOR INDEX');
+  let processed=0,totalSignals=0;
+  for(const sym of stockSyms){
+    processed++;
+    if(processed%50===0){
+      const pct=Math.round(processed/stockSyms.length*100);
+      if(progText)progText.textContent=`Scanning ${processed}/${stockSyms.length} stocks… ${totalSignals.toLocaleString()} signals found`;
+      if(progBar)progBar.style.width=pct+'%';
+      await sleep(0);
+    }
+    const info=allStockData[sym];
+    const rows=info.rows;
+    if(rows.length<60)continue;
+    const closes=rows.map(r=>r.cl);
+    const highs=rows.map(r=>r.hi);
+    const lows=rows.map(r=>r.lo);
+    const h9=calcHMA(closes,HMA_FAST);
+    const h10=calcHMA(closes,HMA_SLOW);
+    const {smi,sig:smiSig}=calcSMI(highs,lows,closes);
+    const atrs=calcATR(highs,lows,closes);
+    const minBar=Math.max(60,getMinDays());
+    for(let n=minBar;n<rows.length-1;n++){
+      if(h9[n]===null||h10[n]===null)continue;
+      const bd=calcBands(closes.slice(0,n+1));
+      if(!bd)continue;
+      const bandZone=bd.bandZone;
+      const bandNum=bd.curBand+1;
+      const signal=detectSALT(h9.slice(0,n+1),h10.slice(0,n+1),smi.slice(0,n+1),smiSig.slice(0,n+1),bandZone);
+      if(!SBM_SIGS.includes(signal))continue;
+      const smiNow=smi[n]!==null?smi[n]:0;
+      const smiPrev=smi[n-1]!==null?smi[n-1]:smiNow;
+      if(signal.startsWith('B')&&smiNow<=smiPrev)continue;
+      if(signal.startsWith('S')&&smiNow>=smiPrev)continue;
+      const cmp=closes[n];
+      const atr=atrs[n]||cmp*0.02;
+      let {tp,sl}=calcTpSl(signal,cmp,atr,bd);
+      if(!tp||!sl){
+        tp=signal.startsWith('B')?parseFloat((cmp*(1+PCT_TP)).toFixed(2)):parseFloat((cmp*(1-PCT_TP)).toFixed(2));
+        sl=signal.startsWith('B')?parseFloat((cmp*(1-PCT_SL)).toFixed(2)):parseFloat((cmp*(1+PCT_SL)).toFixed(2));
+      }
+      const res=resolveOutcome(rows,n,tp,sl);
+      if(res.outcome==='open')continue;
+      totalSignals++;
+      const isWin=res.outcome==='win';
+      const c=mat[signal][bandNum];
+      c.n++;isWin?c.w++:c.l++;
+      if(res.pnl_pct!==null)c.pnls.push(res.pnl_pct);
+      if(c.trades.length<200)c.trades.push({
+        symbol:sym,sector:info.sector,signal,bandNum,bandZone,
+        entryDate:rows[n].date,entryPrice:parseFloat(cmp.toFixed(2)),
+        tp:parseFloat(tp.toFixed(2)),sl:parseFloat(sl.toFixed(2)),
+        outcome:res.outcome,exitPrice:res.exitPrice,pnl_pct:res.pnl_pct,barsToExit:res.barsToExit
+      });
+    }
   }
-
-  const mat = {};
-  SBM_SIGS.forEach(s => { mat[s]={}; SBM_BANDS.forEach(b => { mat[s][b]={n:0,stocks:[]}; }); });
-
-  allSignals.forEach(s => {
-    const sig=s.signal, bn=s.band_num||0;
-    if(!SBM_SIGS.includes(sig)||bn<1||bn>10) return;
-    mat[sig][bn].n++;
-    mat[sig][bn].stocks.push(s);
-  });
-
-  const metaEl = document.getElementById('sbmMeta');
-  if(metaEl) metaEl.textContent = `${allSignals.length} signals today · click any coloured cell to see stocks`;
-
-  container.innerHTML = _buildMatrixHTML(mat,'daily');
+  if(prog)prog.style.display='none';
+  if(meta)meta.textContent=`${totalSignals.toLocaleString()} signals across ${stockSyms.length} stocks · TP=${(PCT_TP*100).toFixed(1)}% SL=${(PCT_SL*100).toFixed(1)}% · Click any cell to drill down`;
+  _sbmBacktestData=mat;
+  _sbmRenderMatrix(mat,'backtest');
 }
 
-// ── Build the HTML table (shared) ───────────────────────
-function _buildMatrixHTML(mat, mode){
-  const BKE = 63.6;
-  const ZONE_COLORS = {
-    1:'var(--bull)',2:'var(--bull)',
-    3:'var(--teal)',4:'var(--teal)',
-    5:'var(--text2)',6:'var(--text2)',
-    7:'var(--amber)',8:'var(--amber)',
-    9:'var(--bear)',10:'var(--bear)'
-  };
-
-  let html = `<table style="min-width:720px;border-collapse:collapse;font-family:var(--mono);font-size:9px">
-  <thead>
-    <tr>
-      <th style="padding:5px 8px;background:var(--bg3);border:1px solid var(--border);min-width:75px;text-align:left">Signal</th>`;
-
-  SBM_BANDS.forEach(b => {
-    html += `<th style="padding:4px 5px;background:var(--bg3);border:1px solid var(--border);text-align:center;color:${ZONE_COLORS[b]}" title="B${b} — ${SBM_ZONE_FULL[b]}">B${b}</th>`;
+// ── HISTORIC: from resolved ledger ──
+async function _sbmRenderHistoric(container){
+  let ledger=[];
+  try{ledger=await loadLedgerAsync();}catch(e){ledger=loadLedger();}
+  const resolved=ledger.filter(r=>r.outcome==='win'||r.outcome==='loss'||r.status==='win'||r.status==='loss');
+  const mat={};
+  SBM_SIGS.forEach(s=>{mat[s]={};SBM_BANDS.forEach(b=>{mat[s][b]={w:0,l:0,n:0,pnls:[],trades:[]};});});
+  resolved.forEach(r=>{
+    const sig=r.signal,bn=r.band_num||0;
+    if(!SBM_SIGS.includes(sig)||bn<1||bn>10)return;
+    const isWin=r.outcome==='win'||r.status==='win';
+    mat[sig][bn].n++;isWin?mat[sig][bn].w++:mat[sig][bn].l++;
+    if(r.pnl_pct!==null)mat[sig][bn].pnls.push(r.pnl_pct);
+    if(mat[sig][bn].trades.length<200)mat[sig][bn].trades.push({
+      symbol:r.symbol,sector:r.sector||'—',signal:sig,bandNum:bn,bandZone:r.band_zone||'—',
+      entryDate:r.entry_date,entryPrice:r.entry_price,tp:r.tp,sl:r.sl,
+      outcome:isWin?'win':'loss',exitPrice:r.exit_price,pnl_pct:r.pnl_pct,barsToExit:r.bars_to_exit
+    });
   });
-  html += `<th style="padding:4px 7px;background:var(--bg3);border:1px solid var(--border);text-align:center">Total</th></tr>
-  <tr>
-    <td style="padding:2px 8px;background:var(--bg3);border:1px solid var(--border);font-size:7px;color:var(--text3)">Zone →</td>`;
-  SBM_BANDS.forEach(b => {
-    html += `<td style="padding:2px 4px;background:var(--bg3);border:1px solid var(--border);text-align:center;font-size:7px;color:${ZONE_COLORS[b]}">${SBM_ZONE[b]}</td>`;
+  const meta=document.getElementById('sbmMeta');
+  if(meta)meta.textContent=`${resolved.length} resolved ledger trades · Click any cell to drill down`;
+  _sbmRenderMatrix(mat,'historic');
+}
+
+// ── DAILY: today's allSignals ──
+function _sbmRenderDaily(container){
+  if(!allSignals.length){container.innerHTML='<div class="empty" style="padding:24px">Load CSV data first</div>';return;}
+  const mat={};
+  SBM_SIGS.forEach(s=>{mat[s]={};SBM_BANDS.forEach(b=>{mat[s][b]={n:0,trades:[]};});});
+  allSignals.forEach(s=>{
+    if(!SBM_SIGS.includes(s.signal)||!s.band_num||s.band_num<1||s.band_num>10)return;
+    mat[s.signal][s.band_num].n++;
+    if(mat[s.signal][s.band_num].trades.length<200)
+      mat[s.signal][s.band_num].trades.push({
+        symbol:s.symbol,sector:s.sector,signal:s.signal,bandNum:s.band_num,bandZone:s.band_zone,
+        entryDate:s.entry_date,entryPrice:s.cmp,tp:s.tp,sl:s.sl,outcome:'open',pnl_pct:null,score:s.score
+      });
   });
-  html += `<td style="background:var(--bg3);border:1px solid var(--border)"></td></tr>
-  </thead><tbody>`;
+  const meta=document.getElementById('sbmMeta');
+  if(meta)meta.textContent=`${allSignals.length} signals today · Click any cell to see stocks`;
+  _sbmRenderMatrix(mat,'daily');
+}
 
-  SBM_SIGS.forEach(sig => {
-    const isBuy = sig.startsWith('B');
-    const sigColor = isBuy ? 'var(--bull)' : 'var(--bear)';
-    let rowTotal = 0;
-
-    html += `<tr><td style="padding:5px 8px;border:1px solid var(--border);background:var(--bg2);font-weight:700;color:${sigColor}">${sig}</td>`;
-
-    SBM_BANDS.forEach(b => {
-      const cell = mat[sig][b];
-      rowTotal += cell.n||0;
-
-      if(mode === 'historic'){
-        const {w,l,n,pnls} = cell;
-        if(n===0){
-          html += `<td style="padding:4px 3px;border:1px solid var(--border);text-align:center;background:var(--bg3);color:var(--text3);font-size:8px">—</td>`;
-          return;
-        }
-        const wr  = Math.round(w/n*100);
-        const avg = pnls.length ? (pnls.reduce((a,c)=>a+c,0)/pnls.length).toFixed(1) : null;
-        const alpha = Math.min(0.4, n/15*0.35+0.05);
-        const bg = wr>=BKE ? `rgba(5,150,105,${alpha})` : wr>=50 ? `rgba(245,158,11,${alpha})` : `rgba(220,38,38,${alpha})`;
-        const tc = wr>=BKE ? 'var(--bull)' : wr>=50 ? 'var(--amber)' : 'var(--bear)';
-        const star = wr>=70 ? ' ★' : '';
-        html += `<td onclick="sbmDrill('historic','${sig}',${b})"
-          style="padding:4px 3px;border:1px solid var(--border);text-align:center;background:${bg};cursor:pointer"
-          title="${sig} × B${b}: ${w}W/${l}L WR=${wr}%${avg?' avgPnL='+avg+'%':''}">
+// ── Core matrix renderer ──
+function _sbmRenderMatrix(mat,mode){
+  const container=document.getElementById('sbmMatrix');
+  if(!container)return;
+  const BKE=63.6;
+  const isDaily=mode==='daily';
+  let html=`<table style="min-width:700px;border-collapse:collapse;font-family:var(--mono);font-size:9px"><thead><tr>
+    <th style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);text-align:left;position:sticky;left:0;z-index:3;min-width:80px">Signal</th>`;
+  SBM_BANDS.forEach(b=>{html+=`<th style="padding:4px 5px;background:var(--bg3);border:1px solid var(--border);text-align:center;color:${SBM_ZONE_COL[b]}" title="Band ${b}">B${b}</th>`;});
+  html+=`<th style="padding:4px 8px;background:var(--bg3);border:1px solid var(--border);text-align:center;color:var(--amber)">Total</th></tr>
+    <tr><td style="padding:2px 10px;background:var(--bg3);border:1px solid var(--border);font-size:7px;color:var(--text3);position:sticky;left:0;z-index:3">Zone</td>`;
+  SBM_BANDS.forEach(b=>{html+=`<td style="padding:2px 4px;background:var(--bg3);border:1px solid var(--border);text-align:center;font-size:7px;color:${SBM_ZONE_COL[b]}">${SBM_ZONE_MAP[b]}</td>`;});
+  html+=`<td style="background:var(--bg3);border:1px solid var(--border)"></td></tr></thead><tbody>`;
+  const rowTotals={};
+  SBM_SIGS.forEach(sig=>{
+    let n=0,w=0,pnls=[];
+    SBM_BANDS.forEach(b=>{const c=mat[sig][b];n+=c.n;w+=(c.w||0);if(c.pnls)pnls.push(...c.pnls);});
+    rowTotals[sig]={n,w,avgPnl:pnls.length?parseFloat((pnls.reduce((a,x)=>a+x,0)/pnls.length).toFixed(2)):null};
+  });
+  SBM_SIGS.forEach(sig=>{
+    const isBuy=sig.startsWith('B');
+    const sigClr=isBuy?'var(--bull)':'var(--bear)';
+    const rt=rowTotals[sig];
+    const totalWR=rt.n>0?Math.round(rt.w/rt.n*100):null;
+    const totalClr=totalWR===null?'c-dim':totalWR>=BKE?'c-bull':totalWR>=50?'c-amb':'c-bear';
+    html+=`<tr><td style="padding:5px 10px;border:1px solid var(--border);background:var(--bg2);font-weight:700;color:${sigClr};position:sticky;left:0;z-index:2">${sig}</td>`;
+    SBM_BANDS.forEach(b=>{
+      const c=mat[sig][b];
+      const n=c.n||0;
+      if(n===0){html+=`<td style="padding:4px;border:1px solid var(--border);text-align:center;background:var(--bg3);color:var(--text3)">—</td>`;return;}
+      if(isDaily){
+        const clr=isBuy?'var(--bull)':'var(--bear)';
+        const alpha=Math.min(0.35,0.08+n/5*0.22);
+        const bg=isBuy?`rgba(5,150,105,${alpha})`:`rgba(220,38,38,${alpha})`;
+        html+=`<td onclick="sbmDrill('${mode}','${sig}',${b})" style="padding:4px 3px;border:1px solid var(--border);text-align:center;background:${bg};cursor:pointer" title="${n} signals today">
+          <div style="font-weight:700;color:${clr};font-size:10px">${n}</div><div style="font-size:7px;color:var(--text3)">today</div></td>`;
+      } else {
+        const w=c.w||0;
+        const wr=Math.round(w/n*100);
+        const avgPnl=c.pnls&&c.pnls.length?parseFloat((c.pnls.reduce((a,x)=>a+x,0)/c.pnls.length).toFixed(2)):null;
+        const alpha=Math.min(0.45,0.05+n/50*0.40);
+        const bg=wr>=BKE?`rgba(5,150,105,${alpha})`:wr>=50?`rgba(245,158,11,${alpha})`:`rgba(220,38,38,${alpha})`;
+        const tc=wr>=BKE?'var(--bull)':wr>=50?'var(--amber)':'var(--bear)';
+        const star=wr>=70?' ★':''
+        html+=`<td onclick="sbmDrill('${mode}','${sig}',${b})" style="padding:4px 3px;border:1px solid var(--border);text-align:center;background:${bg};cursor:pointer" title="${w}W/${n-w}L WR=${wr}%${avgPnl!==null?' AvgPnL='+(avgPnl>=0?'+':'')+avgPnl+'%':''}">
           <div style="font-weight:700;color:${tc};font-size:10px">${wr}%${star}</div>
           <div style="font-size:7px;color:var(--text3)">n=${n}</div>
-          ${avg!==null?`<div style="font-size:7px;color:${parseFloat(avg)>=0?'var(--bull)':'var(--bear)'}">${parseFloat(avg)>=0?'+':''}${avg}%</div>`:''}
-        </td>`;
-      } else {
-        const {n, stocks} = cell;
-        if(n===0){
-          html += `<td style="padding:4px 3px;border:1px solid var(--border);text-align:center;background:var(--bg3);color:var(--text3)">—</td>`;
-          return;
-        }
-        const avgSc = Math.round(stocks.reduce((a,s)=>a+(s.score||0),0)/n);
-        const alpha = Math.min(0.4, n/5*0.25+0.08);
-        const bg = isBuy ? `rgba(5,150,105,${alpha})` : `rgba(220,38,38,${alpha})`;
-        const tc = isBuy ? 'var(--bull)' : 'var(--bear)';
-        html += `<td onclick="sbmDrill('daily','${sig}',${b})"
-          style="padding:4px 3px;border:1px solid var(--border);text-align:center;background:${bg};cursor:pointer"
-          title="Click — ${n} stock(s): ${sig} in B${b}">
-          <div style="font-weight:700;color:${tc};font-size:11px">${n}</div>
-          <div style="font-size:7px;color:var(--text3)">Sc:${avgSc}</div>
+          ${avgPnl!==null?`<div style="font-size:7px;color:${avgPnl>=0?'var(--bull)':'var(--bear)'}">${avgPnl>=0?'+':''} ${avgPnl}%</div>`:''}
+          <div style="width:100%;height:2px;background:var(--border);border-radius:1px;margin-top:2px;overflow:hidden"><div style="width:${Math.min(wr,100)}%;height:2px;background:${tc}"></div></div>
         </td>`;
       }
     });
-
-    html += `<td style="padding:4px 7px;border:1px solid var(--border);background:var(--bg3);text-align:center;font-weight:700;color:var(--amber)">${rowTotal||'—'}</td></tr>`;
+    html+=`<td style="padding:4px 8px;border:1px solid var(--border);background:var(--bg3);text-align:center">`;
+    if(rt.n>0){
+      html+=`<div class="${totalClr}" style="font-weight:700">${isDaily?rt.n:(totalWR+'%')}</div><div style="font-size:7px;color:var(--text3)">n=${rt.n}</div>`;
+      if(!isDaily&&rt.avgPnl!==null)html+=`<div style="font-size:7px;color:${rt.avgPnl>=0?'var(--bull)':'var(--bear)'}">${rt.avgPnl>=0?'+':''} ${rt.avgPnl}%</div>`;
+    } else html+='<span class="c-dim">—</span>';
+    html+='</td></tr>';
   });
-
-  // Column totals
-  html += `<tr><td style="padding:4px 8px;border:1px solid var(--border);background:var(--bg3);font-size:8px;color:var(--text2)">Total</td>`;
-  let grand = 0;
-  SBM_BANDS.forEach(b => {
-    const col = SBM_SIGS.reduce((s,sig)=>s+(mat[sig][b].n||0),0);
-    grand += col;
-    html += `<td style="padding:3px;border:1px solid var(--border);background:var(--bg3);text-align:center;font-size:8px;color:var(--text2)">${col||'—'}</td>`;
+  html+='<tr><td style="padding:3px 10px;border:1px solid var(--border);background:var(--bg3);font-size:8px;font-weight:700;color:var(--text2);position:sticky;left:0;z-index:2">Total</td>';
+  let gN=0,gW=0;
+  SBM_BANDS.forEach(b=>{
+    let cn=0,cw=0;SBM_SIGS.forEach(s=>{cn+=(mat[s][b].n||0);cw+=(mat[s][b].w||0);});gN+=cn;gW+=cw;
+    const cwr=cn>0?Math.round(cw/cn*100):null;
+    html+=`<td style="padding:3px 4px;border:1px solid var(--border);background:var(--bg3);text-align:center;font-size:8px">`;
+    if(cn>0){html+=`<div style="color:${cwr>=BKE?'var(--bull)':cwr>=50?'var(--amber)':'var(--bear)'};font-weight:700">${isDaily?cn:cwr+'%'}</div><div style="font-size:7px;color:var(--text3)">n=${cn}</div>`;}else html+='—';
+    html+='</td>';
   });
-  html += `<td style="padding:4px 7px;border:1px solid var(--border);background:var(--bg3);text-align:center;font-weight:700;color:var(--bright)">${grand}</td></tr>`;
-  html += `</tbody></table>`;
-
-  // Legend
-  html += `<div style="display:flex;gap:14px;padding:7px 10px;font-family:var(--mono);font-size:8px;color:var(--text2);border-top:1px solid var(--border);flex-wrap:wrap">`;
-  if(mode==='historic'){
-    html += `<span>🟢 WR ≥ 63.6% (profitable) · 🟡 50–63.5% (marginal) · 🔴 &lt;50% (avoid) · ★ WR ≥ 70% high-confidence</span>`;
-    html += `<span>n = resolved trades · Avg P&L shown where available</span>`;
-  } else {
-    html += `<span>Number = today's signal count in that cell · Sc = avg score · 🟢 buy · 🔴 sell</span>`;
-  }
-  html += `<span>Zones: B1-B2=REJ-Lo · B3-B4=Below-VA · B5-B6=VA · B7-B8=Above-VA · B9-B10=REJ-Hi</span>`;
-  html += `</div>`;
-  return html;
+  const gwr=gN>0?Math.round(gW/gN*100):null;
+  html+=`<td style="padding:3px 8px;border:1px solid var(--border);background:var(--bg3);text-align:center;font-weight:700;color:var(--bright)">${gwr!==null?(isDaily?gN:gwr+'%')+('<br><span style="font-size:7px;color:var(--text3)">n='+gN+'</span>'):'—'}</td></tr></tbody></table>`;
+  html+='<div style="display:flex;gap:12px;padding:8px 10px;font-family:var(--mono);font-size:8px;color:var(--text2);border-top:1px solid var(--border);flex-wrap:wrap">';
+  if(!isDaily){html+='<span>🟢 WR ≥ 63.6% (EV+) &nbsp; 🟡 50–63.5% marginal &nbsp; 🔴 &lt;50% avoid &nbsp; ★ = WR ≥ 70% · n = signal instances</span>';}
+  else{html+='<span>Number = today signal count · 🟢 Buy · 🔴 Sell</span>';}
+  html+='<span style="margin-left:auto">B1-B2: REJ Lo · B3-B4: Below VA · B5-B6: VA · B7-B8: Above VA · B9-B10: REJ Hi</span></div>';
+  container.innerHTML=html;
 }
 
-// ── Drill-down ──────────────────────────────────────────
-function sbmDrill(mode, sig, bandNum){
-  const panel = document.getElementById('sbmDrilldown');
-  const title = document.getElementById('sbmDrillTitle');
-  const body  = document.getElementById('sbmDrillBody');
-  if(!panel||!title||!body) return;
-
-  title.textContent = `${sig}  ×  B${bandNum} (${SBM_ZONE_FULL[bandNum]||'?'}) — ${mode==='historic'?'All resolved ledger trades':'Today\'s signals'}`;
-
-  if(mode==='daily'){
-    const stocks = allSignals.filter(s=>s.signal===sig && s.band_num===bandNum);
-    if(!stocks.length){
-      body.innerHTML='<tr><td colspan="12" class="empty">No signals today for this combination</td></tr>';
-    } else {
-      body.innerHTML = stocks.sort((a,b)=>b.score-a.score).map(s=>`<tr>
-        <td><strong>${s.symbol}</strong></td>
-        <td style="font-size:8px">${(s.sector||'').substring(0,14)}</td>
-        <td>${sigBadge(s.signal)}</td>
-        <td class="c-amb" style="font-weight:700">B${s.band_num}</td>
-        <td>${bandZoneBadge(s.band_zone)}</td>
-        <td class="${s.score>=65?'c-bull':'c-amb'}">${s.score}</td>
-        <td>₹${s.cmp.toFixed(1)}</td>
-        <td class="c-bull">₹${s.tp?s.tp.toFixed(1):'—'}</td>
-        <td class="c-bear">₹${s.sl?s.sl.toFixed(1):'—'}</td>
-        <td class="c-dim" style="font-size:8px">${s.entry_date||'—'}</td>
-        <td><span class="b b-open">TODAY</span></td>
-        <td class="c-dim">—</td>
-      </tr>`).join('');
-    }
-  } else {
-    const ledger  = loadLedger();
-    const records = ledger.filter(r=>r.signal===sig&&(r.band_num||0)===parseInt(bandNum)&&(r.outcome==='win'||r.outcome==='loss'));
-    if(!records.length){
-      body.innerHTML='<tr><td colspan="12" class="empty">No resolved trades yet for this combination — keep running sessions daily</td></tr>';
-    } else {
-      body.innerHTML = records.sort((a,b)=>b.entry_date.localeCompare(a.entry_date)).slice(0,100).map(r=>{
-        const oc = r.outcome==='win'?'c-bull':'c-bear';
-        return`<tr>
-          <td><strong>${r.symbol}</strong></td>
-          <td style="font-size:8px">${(r.sector||'').substring(0,14)}</td>
-          <td>${sigBadge(r.signal)}</td>
-          <td class="c-amb" style="font-weight:700">B${r.band_num||'?'}</td>
-          <td>${bandZoneBadge(r.band_zone)}</td>
-          <td class="c-dim">${r.score||'—'}</td>
-          <td>₹${(r.entry_price||0).toFixed(2)}</td>
-          <td class="c-bull">₹${r.tp||'—'}</td>
-          <td class="c-bear">₹${r.sl||'—'}</td>
-          <td class="c-dim" style="font-size:8px">${r.entry_date}</td>
-          <td><span class="b ${r.outcome==='win'?'b-bull':'b-bear'}">${r.outcome.toUpperCase()}</span></td>
-          <td class="${oc}">${r.pnl_pct!==null?(r.pnl_pct>0?'+':'')+r.pnl_pct+'%':'—'}</td>
-        </tr>`;
-      }).join('');
-    }
+// ── Drill-down ──
+function sbmDrill(mode,sig,bandNum){
+  const panel=document.getElementById('sbmDrilldown');
+  const title=document.getElementById('sbmDrillTitle');
+  const body=document.getElementById('sbmDrillBody');
+  if(!panel||!title||!body)return;
+  const _ml=mode==='daily'?'Today Signals':mode==='backtest'?'250d Backtest':'Ledger'; title.textContent=sig+'  ×  B'+bandNum+' ('+( SBM_ZONE_MAP[bandNum]||'—')+')  —  '+_ml;
+  let trades=[];
+  if(mode==='daily'){trades=allSignals.filter(s=>s.signal===sig&&s.band_num===bandNum).map(s=>({symbol:s.symbol,sector:s.sector,signal:s.signal,bandNum:s.band_num,bandZone:s.band_zone,entryDate:s.entry_date,entryPrice:s.cmp,tp:s.tp,sl:s.sl,outcome:'open',pnl_pct:null,score:s.score}));}
+  else{const mat=_sbmBacktestData;if(mat&&mat[sig]&&mat[sig][bandNum])trades=mat[sig][bandNum].trades||[];}
+  if(!trades.length){body.innerHTML='<tr><td colspan="13" class="empty">No data for this combination</td></tr>';}
+  else{
+    const sorted=[...trades].sort((a,b)=>mode==='daily'?(b.score||0)-(a.score||0):(b.pnl_pct||0)-(a.pnl_pct||0));
+    body.innerHTML=sorted.map(t=>{
+      const pc=t.pnl_pct>0?'c-bull':t.pnl_pct<0?'c-bear':'c-dim';
+      const ob=t.outcome==='win'?'<span class="b b-bull">WIN</span>':t.outcome==='loss'?'<span class="b b-bear">LOSS</span>':'<span class="b b-open">OPEN</span>';
+      var _r='<tr><td><strong>'+t.symbol+'</strong></td><td style="font-size:8px">'+(t.sector||'').substring(0,14)+'</td><td>'+sigBadge(t.signal)+'</td><td class="c-dim">B'+t.bandNum+'</td><td>'+bandZoneBadge(t.bandZone)+'</td><td class="c-dim">'+(t.entryDate||'—')+'</td><td class="c-amb">\u20b9'+(t.entryPrice||0).toFixed(2)+'</td><td class="c-bull">'+(t.tp?'\u20b9'+t.tp.toFixed(2):'—')+'</td><td class="c-bear">'+(t.sl?'\u20b9'+t.sl.toFixed(2):'—')+'</td><td>'+ob+'</td><td class="'+pc+'">'+(t.exitPrice?'\u20b9'+t.exitPrice.toFixed(2):'—')+'</td><td class="'+pc+'">'+(t.pnl_pct!==null?(t.pnl_pct>=0?'+':'')+t.pnl_pct+'%':'—')+'</td><td class="c-dim">'+(t.barsToExit||'—')+'</td></tr>'; return _r;
+    }).join('');
   }
-
-  panel.style.display = 'block';
-  panel.scrollIntoView({behavior:'smooth',block:'start'});
+  panel.style.display='block';
+  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
-// ── Export matrix as CSV ────────────────────────────────
 function exportSBMCSV(){
-  const mode = _sbmMode;
-  const rows = ['Mode,Signal,Band,Zone,WR%,Trades,Wins,Losses,AvgPnL%,Count'];
-  const ledger = mode==='historic' ? loadLedger().filter(r=>r.outcome==='win'||r.outcome==='loss') : [];
-
-  SBM_SIGS.forEach(sig => {
-    SBM_BANDS.forEach(b => {
-      const zone = SBM_ZONE_FULL[b];
-      if(mode==='historic'){
-        const recs = ledger.filter(r=>r.signal===sig&&(r.band_num||0)===b);
-        const w=recs.filter(r=>r.outcome==='win').length, l=recs.filter(r=>r.outcome==='loss').length, n=w+l;
-        const wr=n?Math.round(w/n*100):'';
-        const pnls=recs.map(r=>r.pnl_pct).filter(v=>v!==null);
-        const avg=pnls.length?(pnls.reduce((a,c)=>a+c,0)/pnls.length).toFixed(2):'';
-        rows.push([mode,sig,`B${b}`,zone,wr,n,w,l,avg,''].join(','));
-      } else {
-        const cnt=allSignals.filter(s=>s.signal===sig&&s.band_num===b).length;
-        rows.push([mode,sig,`B${b}`,zone,'',cnt,'','','',cnt].join(','));
-      }
-    });
-  });
-
+  if(_sbmMode==='backtest'&&!_sbmBacktestData){toast('Run backtest first','err');return;}
+  const rows=['Signal,Band,Zone,WR%,Wins,Losses,Total,AvgPnL%'];
+  const mat=_sbmBacktestData;
+  if(_sbmMode==='backtest'&&mat){
+    SBM_SIGS.forEach(sig=>{SBM_BANDS.forEach(b=>{const c=mat[sig][b];if(!c.n)return;const wr=Math.round((c.w||0)/c.n*100);const ap=c.pnls&&c.pnls.length?parseFloat((c.pnls.reduce((a,x)=>a+x,0)/c.pnls.length).toFixed(2)):0;rows.push([sig,'B'+b,SBM_ZONE_MAP[b],wr,c.w||0,c.l||0,c.n,ap].join(','));});});
+  }
   const blob=new Blob([rows.join('\n')],{type:'text/csv'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=`nandi_signal_band_matrix_${mode}_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  toast('Signal×Band matrix exported','ok');
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='machines_sbm_'+_sbmMode+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+  toast('SBM CSV exported','ok');
 }
 
-
+function sbmResetCache(){_sbmBacktestData=null;}
 </script>
 </body>
 </html>
