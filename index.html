@@ -2016,6 +2016,7 @@ async function processAll(bySymbol) {
   saveMeta(Object.assign({},meta,{sessions:sessionCount,lastDate:lastDateVal}));
 
   setProgress(100,'Done!');
+  sbmResetCache(); // reset SBM cache so backtest re-runs with new data
   toast(`${allSignals.length} signals · ${newAdded} new · ${resolved} resolved · Session ${sessionCount}`,'ok');
 
   // Update badges + pills
@@ -3731,7 +3732,14 @@ function switchIntel(name){
 }
 function renderIntelActive(){const active=document.querySelector('.i-panel.active');if(active)renderIntelTab(active.id.replace('intel-',''))}
 function renderIntelTab(name){
-  const map={m6:renderM6,m1:renderM1,m4:renderM4,m2:renderM2,m3:renderM3,m5:renderM5,m7:renderM7,tpsl:renderTPSL,mb:renderMB,sectors:renderSectors,ledger:renderLedger,retcorr:renderRetCorr,wrref:function(){},regimexperf:function(){renderRegimeCrossPerf();},slDash:renderSLDash,dailymovers:renderDailyMovers,orderlog:renderOrderLog,sigbandmatrix:function(){sbmSwitch(_sbmMode||'historic');}};
+  const map={m6:renderM6,m1:renderM1,m4:renderM4,m2:renderM2,m3:renderM3,m5:renderM5,m7:renderM7,tpsl:renderTPSL,mb:renderMB,sectors:renderSectors,ledger:renderLedger,retcorr:renderRetCorr,wrref:function(){},regimexperf:function(){renderRegimeCrossPerf();},slDash:renderSLDash,dailymovers:renderDailyMovers,orderlog:renderOrderLog,sigbandmatrix:function(){
+    _sbmSetBtns();
+    if(_sbmMode==='backtest'&&!_sbmBacktestData&&Object.keys(allStockData).length){
+      _sbmRunBacktest(); // auto-run backtest when tab opens
+    } else {
+      renderSBM();
+    }
+  }};
   if(map[name])map[name]();
 }
 
@@ -5078,14 +5086,13 @@ function exportDailyMoversCSV(){
   const syms=[];
   document.querySelectorAll('#dmBody tr').forEach(tr=>{
     const cells=[...tr.querySelectorAll('td')];
-    if(cells.length>=2){const s=cells[1].textContent.trim();if(s)syms.push('NSE:'+s);}
+    if(cells.length>=2){const s=cells[1].textContent.trim();if(s)syms.push(s);}
   });
   if(!syms.length){toast('No movers to export','err');return;}
-  // TradingView format: NSE:SYMBOL one per line, no header
-  const blob=new Blob([syms.join('\n')],{type:'text/plain'});
+  const blob=new Blob([syms.join('\n')],{type:'text/csv'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download='machines_movers_'+new Date().toISOString().slice(0,10)+'.txt';a.click();
-  toast('Daily movers exported ('+syms.length+' symbols) — ready for TradingView','ok');
+  a.download='machines_movers_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+  toast('Daily movers exported ('+syms.length+' symbols)','ok');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5096,12 +5103,11 @@ function exportDailyMoversCSV(){
 function exportTop25CSV(type){
   const list=type==='buy'?selectTop25(allSignals,'buy'):selectTop25(allSignals,'sell');
   if(!list.length){toast('No '+type+' signals to export','err');return;}
-  // TradingView format: NSE:SYMBOL one per line, no header
-  const blob=new Blob([list.map(s=>'NSE:'+s.symbol).join('\n')],{type:'text/plain'});
+  const blob=new Blob([list.map(s=>s.symbol).join('\n')],{type:'text/csv'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download='machines_top50_'+type+'_'+new Date().toISOString().slice(0,10)+'.txt';
+  a.download='machines_top50_'+type+'_'+new Date().toISOString().slice(0,10)+'.csv';
   a.click();
-  toast('Top 50 '+type+' exported ('+list.length+' symbols) — ready for TradingView','ok');
+  toast('Top 50 '+type+' exported ('+list.length+' symbols)','ok');
 }
 
 // All signals table
