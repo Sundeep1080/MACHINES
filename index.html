@@ -5217,8 +5217,21 @@ async function brokerRefreshAll(){
 }
 
 async function kiteGet(path){
-  const res=await fetch(`${ZD_WORKER}${path}`,{headers:{'X-Kite-Version':'3','Authorization':`token ${zdApiKey}:${zdToken}`}});
-  return res.json();
+  try{
+    const res=await fetch(`${ZD_WORKER}${path}`,{
+      headers:{'X-Kite-Version':'3','Authorization':`token ${zdApiKey}:${zdToken}`}
+    });
+    if(!res.ok){
+      zdLog(`kiteGet ${path} HTTP ${res.status}`);
+      return {status:'error',message:`HTTP ${res.status}`};
+    }
+    const text=await res.text();
+    try{ return JSON.parse(text); }
+    catch(e){ zdLog(`kiteGet ${path} parse error: ${text.slice(0,100)}`); return {status:'error',message:'JSON parse error'}; }
+  }catch(e){
+    zdLog(`kiteGet ${path} network error: ${e.message}`);
+    return {status:'error',message:e.message};
+  }
 }
 
 async function fetchBrokerOrders(){
@@ -5472,9 +5485,13 @@ async function _sbmRunBacktest(){
     const {smi,sig:smiSig}=calcSMI(highs,lows,closes);
     const atrs=calcATR(highs,lows,closes);
     const minBar=Math.max(60,getMinDays());
+    const lb=getBandLB(); // e.g. 250
     for(let n=minBar;n<rows.length-1;n++){
       if(h9[n]===null||h10[n]===null)continue;
-      const bd=calcBands(closes.slice(0,n+1));
+      // Use available bars up to the configured lookback
+      const availLb=Math.min(lb, n+1);
+      if(availLb<40)continue; // need at least 40 bars for meaningful bands
+      const bd=calcBands(closes.slice(0,n+1), availLb);
       if(!bd)continue;
       const bandZone=bd.bandZone;
       const bandNum=bd.curBand+1;
