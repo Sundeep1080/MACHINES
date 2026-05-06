@@ -5074,17 +5074,18 @@ function renderDailyMovers() {
 }
 
 function exportDailyMoversCSV(){
-  if(!Object.keys(allStockData).length){toast('No data to export','err');return}
-  const rows=['Symbol,Sector,PrevClose,LatestClose,TodayPct,AvgPctPerDay,Consistency,Signal,SMI'];
+  if(!Object.keys(allStockData).length){toast('No data to export','err');return;}
+  const syms=[];
   document.querySelectorAll('#dmBody tr').forEach(tr=>{
     const cells=[...tr.querySelectorAll('td')];
-    if(cells.length<11)return;
-    rows.push([cells[1].textContent.trim(),cells[2].textContent.trim(),cells[3].textContent.replace('₹','').trim(),cells[4].textContent.replace('₹','').trim(),cells[5].textContent.trim(),cells[6].textContent.trim(),cells[7].textContent.trim(),cells[9].textContent.trim(),cells[10].textContent.trim()].join(','));
+    if(cells.length>=2){const s=cells[1].textContent.trim();if(s)syms.push('NSE:'+s);}
   });
-  const blob=new Blob([rows.join('\n')],{type:'text/csv'});
+  if(!syms.length){toast('No movers to export','err');return;}
+  // TradingView format: NSE:SYMBOL one per line, no header
+  const blob=new Blob([syms.join('\n')],{type:'text/plain'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=`nandi_daily_movers_${new Date().toISOString().slice(0,10)}.csv`;a.click();
-  toast('Daily movers CSV exported','ok');
+  a.download='machines_movers_'+new Date().toISOString().slice(0,10)+'.txt';a.click();
+  toast('Daily movers exported ('+syms.length+' symbols) — ready for TradingView','ok');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5095,19 +5096,12 @@ function exportDailyMoversCSV(){
 function exportTop25CSV(type){
   const list=type==='buy'?selectTop25(allSignals,'buy'):selectTop25(allSignals,'sell');
   if(!list.length){toast('No '+type+' signals to export','err');return;}
-  const hdrs=['Symbol','Sector','Index','Signal','Score','Zone','HVP','Regime','Alignment','CMP','TP','SL','RR','Kelly%','HistWR%','250d_Ret%','WeeklyTrend','BarsAgo'];
-  const rows=list.map(s=>[
-    s.symbol,(s.sector||'').replace(/,/g,';'),s.index||'',s.signal,s.score,
-    s.band_zone||'',s.hvp,s.regime||'',s.regime_alignment||'',
-    s.cmp,(s.tp||0).toFixed(2),(s.sl||0).toFixed(2),s.rr,
-    s.kelly_pct||'',s.wr_lookup||'',s.ret_250||'',
-    s.weeklyTrend||'',s.barsAgo||0
-  ].join(','));
-  const blob=new Blob([[hdrs.join(','),...rows].join('\n')],{type:'text/csv'});
+  // TradingView format: NSE:SYMBOL one per line, no header
+  const blob=new Blob([list.map(s=>'NSE:'+s.symbol).join('\n')],{type:'text/plain'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download='machines_top50_'+type+'_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.download='machines_top50_'+type+'_'+new Date().toISOString().slice(0,10)+'.txt';
   a.click();
-  toast('Top 50 '+type+' CSV exported ('+list.length+' stocks)','ok');
+  toast('Top 50 '+type+' exported ('+list.length+' symbols) — ready for TradingView','ok');
 }
 
 // All signals table
