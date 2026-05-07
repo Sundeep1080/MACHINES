@@ -474,7 +474,7 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
           <span id="buyCollapseArrow" style="font-size:11px;color:var(--text2);margin-left:4px">▲</span>
         </div>
       </div>
-      <div id="buyTableWrap" class="tw"><table id="top25BuyTbl"><thead><tr><th>#</th><th>Symbol</th><th>Sig</th><th>Score</th><th>Align</th><th id="thTop25BuyZone">250d Zone</th><th>HVP</th><th>CMP ₹</th><th>TP ₹</th><th>SL ₹</th><th>R:R</th><th>HistWR%</th><th>Kelly%</th><th style="color:var(--amber)">250d Ret%</th><th>Order</th></tr></thead><tbody id="top25BuyBody"></tbody></table></div>
+      <div id="buyTableWrap" class="tw"><table id="top25BuyTbl"><thead><tr><th>#</th><th>Symbol</th><th>Sig</th><th>Score</th><th>Align</th><th id="thTop25BuyZone">250d Zone</th><th>HVP</th><th>DoE</th><th>Entry ₹</th><th>CMP ₹</th><th>SMI</th><th>TP ₹</th><th>SL ₹</th><th>R:R</th><th>HistWR%</th><th>Kelly%</th><th style="color:var(--amber)">250d Ret%</th><th>Order</th></tr></thead><tbody id="top25BuyBody"></tbody></table></div>
     </div>
     <!-- SELL PANEL -->
     <div class="top25-panel" id="sellPanel">
@@ -489,7 +489,7 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
           <span id="sellCollapseArrow" style="font-size:11px;color:var(--text2);margin-left:4px">▲</span>
         </div>
       </div>
-      <div id="sellTableWrap" class="tw"><table id="top25SellTbl"><thead><tr><th>#</th><th>Symbol</th><th>Sig</th><th>Score</th><th>Align</th><th id="thTop25SellZone">250d Zone</th><th>HVP</th><th>CMP ₹</th><th>TP ₹</th><th>SL ₹</th><th>R:R</th><th>HistWR%</th><th>Kelly%</th><th style="color:var(--amber)">250d Ret%</th><th>Order</th></tr></thead><tbody id="top25SellBody"></tbody></table></div>
+      <div id="sellTableWrap" class="tw"><table id="top25SellTbl"><thead><tr><th>#</th><th>Symbol</th><th>Sig</th><th>Score</th><th>Align</th><th id="thTop25SellZone">250d Zone</th><th>HVP</th><th>DoE</th><th>Entry ₹</th><th>CMP ₹</th><th>SMI</th><th>TP ₹</th><th>SL ₹</th><th>R:R</th><th>HistWR%</th><th>Kelly%</th><th style="color:var(--amber)">250d Ret%</th><th>Order</th></tr></thead><tbody id="top25SellBody"></tbody></table></div>
     </div>
   </div>
   <div class="insights-strip" id="insightStrip" style="display:none"></div>
@@ -3028,6 +3028,18 @@ function renderTop25() {
     const wrCls=s.wr_lookup>=75?'c-bull':s.wr_lookup>=68?'c-amb':'c-bear';
     const wkCls2=s.weeklyAligned?'b-bull':s.weeklyTrend==='bear'?'b-bear':'b-dim';
     const concBadge2=`<span class="b ${wkCls2}">${(s.weeklyTrend||'neut').toUpperCase()}</span>`;
+    // DoE — date of entry (dd/mm short)
+    const entryDate=s.entry_date||'—';
+    const entryDateShort=entryDate!=='—'?entryDate.slice(5).replace('-','/'):'—';
+    // Entry price (trigger price)
+    const trigPx=s.trigger_price||s.cmp;
+    // CMP drift from entry
+    const drift=trigPx>0?((s.cmp-trigPx)/trigPx*100):0;
+    const driftStr=drift!==0?` <span class="${drift>0?'c-bull':'c-bear'}" style="font-size:7px">${drift>0?'+':''}${drift.toFixed(1)}%</span>`:'';
+    // SMI value
+    const smiVal=s.smi_last||0;
+    const smiCls=s.signal.startsWith('B')?(smiVal>0?'c-bull':smiVal>-20?'c-amb':'c-bear'):(smiVal<0?'c-bull':smiVal<20?'c-amb':'c-bear');
+    const smiStr=`<span class="${smiCls}">${smiVal}</span>`;
     return`<tr class="${sigClass(s.signal)}">
       <td class="c-dim">${idealFlag}${i+1}</td>
       <td>${alignBadge}${goodFlag}<strong>${s.symbol}</strong></td>
@@ -3036,7 +3048,10 @@ function renderTop25() {
       <td>${concBadge2}</td>
       <td>${bz}</td>
       <td><span class="${s.hvp>60?'c-bull':s.hvp<35?'c-bear':'c-amb'}">${s.hvp}</span></td>
-      <td>₹${s.cmp.toFixed(1)}</td>
+      <td class="c-dim" style="font-size:8px">${entryDateShort}</td>
+      <td class="c-dim">₹${trigPx.toFixed(1)}</td>
+      <td>₹${s.cmp.toFixed(1)}${driftStr}</td>
+      <td>${smiStr}</td>
       <td class="c-bull">₹${s.tp.toFixed(1)}</td>
       <td class="c-bear">₹${s.sl.toFixed(1)}</td>
       <td class="${s.rr>=2?'c-bull':s.rr>=1?'c-amb':'c-bear'}">${s.rr}</td>
@@ -3046,8 +3061,8 @@ function renderTop25() {
       <td>${zdLiveMode?`<button class="${s.signal.startsWith('B')?'ob-buy':'ob-sell'}" onclick="showOrderModal('${s.symbol}','${s.signal.startsWith('B')?'BUY':'SELL'}',${s.cmp},${s.tp},${s.sl},1)">${s.signal.startsWith('B')?'▲ BUY':'▼ SELL'}</button>`:'—'}</td>
     </tr>`;
   };
-  document.getElementById('top25BuyBody').innerHTML=buys.length?buys.map(row).join(''):`<tr><td colspan="15" class="empty">No buy signals today</td></tr>`;
-  document.getElementById('top25SellBody').innerHTML=sells.length?sells.map(row).join(''):`<tr><td colspan="15" class="empty">No sell signals today</td></tr>`;
+  document.getElementById('top25BuyBody').innerHTML=buys.length?buys.map(row).join(''):`<tr><td colspan="18" class="empty">No buy signals today</td></tr>`;
+  document.getElementById('top25SellBody').innerHTML=sells.length?sells.map(row).join(''):`<tr><td colspan="18" class="empty">No sell signals today</td></tr>`;
   // Update count badges
   const bc=document.getElementById('buyCount');
   const sc=document.getElementById('sellCount');
@@ -3721,7 +3736,16 @@ function switchPage(name){
   if(name==='intel')renderIntelActive();
   if(name==='portfolio')renderPage2();
   if(name==='nifty')renderNiftyPage();
-  if(name==='broker'){switchBrokerTab('orders');brokerRefreshAll();}
+  if(name==='broker'){
+    switchBrokerTab('orders');
+    // Only auto-refresh if not currently fetching OHLC
+    if(zdLiveMode){
+      const sl=document.getElementById('statusLine');
+      const isFetching=sl&&sl.textContent.includes('Fetching');
+      if(!isFetching) brokerRefreshAll();
+      else toast('Broker will refresh after OHLC fetch completes','info');
+    }
+  }
 }
 function switchIntel(name){
   document.querySelectorAll('.i-panel').forEach(p=>p.classList.remove('active'));
@@ -5238,8 +5262,8 @@ async function fetchBrokerOrders(){
   try{
     const j=await kiteGet('/kite/orders');
     if(j.status==='success'){_brokerData.orders=(j.data||[]).reverse();renderBrokerOrders();}
-    else toast('Orders: '+j.message,'err');
-  }catch(e){toast('Orders fetch error','err')}
+    else{document.getElementById('brkOrdersBody').innerHTML=`<tr><td colspan="9" class="empty c-bear">⚠ ${j.message||'Orders fetch failed — check Kite connection'}</td></tr>`;zdLog('Orders: '+j.message);}
+  }catch(e){document.getElementById('brkOrdersBody').innerHTML=`<tr><td colspan="9" class="empty c-bear">⚠ Network error: ${e.message}</td></tr>`;}
 }
 
 async function fetchBrokerPositions(){
@@ -5250,24 +5274,24 @@ async function fetchBrokerPositions(){
       const seen=new Set();
       _brokerData.positions=all.filter(p=>{const k=p.tradingsymbol+'|'+p.product;if(seen.has(k))return false;seen.add(k);return true;}).filter(p=>p.quantity!==0);
       renderBrokerPositions();
-    } else toast('Positions: '+j.message,'err');
-  }catch(e){toast('Positions fetch error','err')}
+    } else{document.getElementById('brkPosBody').innerHTML=`<tr><td colspan="9" class="empty c-bear">⚠ ${j.message||'Positions fetch failed'}</td></tr>`;zdLog('Positions: '+j.message);}
+  }catch(e){document.getElementById('brkPosBody').innerHTML=`<tr><td colspan="9" class="empty c-bear">⚠ Network error: ${e.message}</td></tr>`;}
 }
 
 async function fetchBrokerHoldings(){
   try{
     const j=await kiteGet('/kite/portfolio/holdings');
     if(j.status==='success'){_brokerData.holdings=j.data||[];renderBrokerHoldings();}
-    else toast('Holdings: '+j.message,'err');
-  }catch(e){toast('Holdings fetch error','err')}
+    else{document.getElementById('brkHldBody').innerHTML=`<tr><td colspan="10" class="empty c-bear">⚠ ${j.message||'Holdings fetch failed'}</td></tr>`;zdLog('Holdings: '+j.message);}
+  }catch(e){document.getElementById('brkHldBody').innerHTML=`<tr><td colspan="10" class="empty c-bear">⚠ Network error: ${e.message}</td></tr>`;}
 }
 
 async function fetchBrokerGTT(){
   try{
     const j=await kiteGet('/kite/gtt/triggers');
     if(j.status==='success'){_brokerData.gtt=j.data||[];renderBrokerGTT();}
-    else toast('GTT: '+j.message,'err');
-  }catch(e){toast('GTT fetch error','err')}
+    else{document.getElementById('brkGttBody').innerHTML=`<tr><td colspan="9" class="empty c-bear">⚠ ${j.message||'GTT fetch failed'}</td></tr>`;zdLog('GTT: '+j.message);}
+  }catch(e){document.getElementById('brkGttBody').innerHTML=`<tr><td colspan="9" class="empty c-bear">⚠ Network error: ${e.message}</td></tr>`;}
 }
 
 function renderBrokerSummary(){
