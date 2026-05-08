@@ -296,6 +296,12 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
 .eb-avoid{background:rgba(220,38,38,.1);color:var(--bear);border:1px solid rgba(220,38,38,.3)}
 .pf-alert-box{position:fixed;bottom:80px;right:16px;z-index:9000;background:var(--amber);color:#000;border-radius:10px;padding:14px 18px;font-family:var(--mono);font-size:11px;font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,.4);display:flex;flex-direction:column;gap:8px;max-width:260px}
 .pf-alert-box button{background:#000;color:var(--amber);border:none;border-radius:5px;padding:8px;font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer}
+/* ── KITE-STYLE P&L CELLS ── */
+.pnl-cell{display:flex;flex-direction:column;align-items:flex-end;gap:0px;line-height:1.3}
+.pnl-amt{font-family:var(--mono);font-size:10px;font-weight:700}
+.pnl-pct{font-family:var(--mono);font-size:8px;opacity:.85}
+.hld-sym{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--bright)}
+.hld-t1{font-family:var(--mono);font-size:7px;color:var(--amber);background:var(--amber-g);border:1px solid rgba(217,119,6,.3);border-radius:2px;padding:0 3px;margin-left:4px}
 /* ── SECTOR TRACKER ── */
 #stTable{font-size:10px}
 #stTable td,#stTable th{padding:5px 8px;white-space:nowrap}
@@ -922,9 +928,24 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
 
   <!-- HOLDINGS -->
   <div id="brk-holdings" class="brk-panel card" style="display:none">
-    <div class="ct"><i class="fas fa-landmark"></i> Holdings</div>
+    <div class="ct"><i class="fas fa-landmark"></i> Holdings
+      <span style="font-family:var(--mono);font-size:8px;color:var(--text2);font-weight:400;margin-left:8px">Layout matches Zerodha Kite · Day P&L = LTP change × Qty · Unrealised P&L shown</span>
+    </div>
+    <!-- Holdings summary strip -->
+    <div id="hldSummaryStrip" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 2px 10px;font-family:var(--mono);font-size:9px"></div>
     <div class="tw"><table id="brkHldTbl">
-      <thead><tr><th>Symbol</th><th>Qty</th><th>Avg ₹</th><th>CMP ₹</th><th>Invested ₹</th><th>Current ₹</th><th>P&amp;L ₹</th><th>P&amp;L %</th><th>Day P&amp;L ₹</th><th>Exit</th></tr></thead>
+      <thead><tr>
+        <th>Instrument</th>
+        <th>LTP ₹</th>
+        <th style="text-align:right">Total P&amp;L</th>
+        <th style="text-align:right">Day's P&amp;L</th>
+        <th style="text-align:right">Current Value ₹</th>
+        <th style="text-align:right">Invested ₹</th>
+        <th style="text-align:center">Qty</th>
+        <th style="text-align:right">Avg Price ₹</th>
+        <th style="text-align:right">Realised P&amp;L</th>
+        <th>Action</th>
+      </tr></thead>
       <tbody id="brkHldBody"><tr><td colspan="10" class="empty">Click Refresh All to load</td></tr></tbody>
     </table></div>
   </div>
@@ -973,6 +994,11 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
         <div class="aval" id="apHldPnl">—</div>
         <div class="asub" id="apHldPnlSub">Long-term holding P&amp;L</div>
       </div>
+      <div class="allpos-card" style="border-top:3px solid var(--kite)">
+        <label>✅ Realised P&amp;L (Today)</label>
+        <div class="aval" id="apRealisedPnl">—</div>
+        <div class="asub" id="apRealisedSub">Booked P&amp;L from closed trades</div>
+      </div>
     </div>
 
     <!-- Toggle filter -->
@@ -1003,13 +1029,14 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
             <th>Product</th>
             <th>Qty</th>
             <th>Avg Cost ₹</th>
-            <th>CMP ₹</th>
+            <th>LTP ₹</th>
             <th>Invested ₹</th>
             <th>Current ₹</th>
             <th>Total P&amp;L ₹</th>
             <th>Total P&amp;L %</th>
             <th>Day P&amp;L ₹</th>
             <th>Day P&amp;L %</th>
+            <th>Realised P&amp;L ₹</th>
             <th>Status</th>
             <th>Action</th>
           </tr>
@@ -2361,21 +2388,139 @@ async function fetchBrokerGTT(){try{const j=await kiteGet('/kite/gtt/triggers');
 function renderBrokerSummary(){
   const strip=document.getElementById('brokerSummaryStrip');if(!strip)return;
   const pos=_brokerData.positions,hld=_brokerData.holdings,ord=_brokerData.orders;
-  const totalPosPnl=pos.reduce((s,p)=>s+(p.pnl||0),0),totalHldPnl=hld.reduce((s,h)=>s+(h.pnl||0),0);
+  const totalPosPnl=pos.reduce((s,p)=>s+(p.pnl||0),0);
+  const totalHldPnl=hld.reduce((s,h)=>s+(h.pnl||0),0);
+  // Correct day P&L: positions use day_m2m, holdings use day_change × qty
+  const totalPosDayPnl=pos.reduce((s,p)=>s+(p.day_m2m||0),0);
+  const totalHldDayPnl=hld.reduce((s,h)=>s+((h.day_change||0)*(h.quantity||0)),0);
+  const totalDayPnl=totalPosDayPnl+totalHldDayPnl;
+  // Realised P&L from positions (booked today)
+  const totalRealised=pos.reduce((s,p)=>s+(p.realised||0),0);
   const openOrders=ord.filter(o=>o.status==='OPEN'||o.status==='TRIGGER PENDING').length;
-  const invested=hld.reduce((s,h)=>s+((h.average_price||0)*(h.quantity||0)),0),current=hld.reduce((s,h)=>s+((h.last_price||0)*(h.quantity||0)),0);
+  const invested=hld.reduce((s,h)=>s+((h.average_price||0)*(h.quantity||0)),0);
+  const current=hld.reduce((s,h)=>s+((h.last_price||0)*(h.quantity||0)),0);
+  const totalPnlAll=totalPosPnl+totalHldPnl;
+  function pnlFmt(v){
+    const cls=v>=0?'color:var(--bull)':'color:var(--bear)';
+    return `<span style="font-size:12px;font-weight:700;${cls}">${v>=0?'+':''}₹${Math.round(Math.abs(v)).toLocaleString('en-IN')}</span>`;
+  }
   strip.innerHTML=[
-    {label:'Open Orders',val:openOrders,cls:'c-amb'},
-    {label:'Positions P&L',val:(totalPosPnl>=0?'+':'')+'₹'+Math.round(totalPosPnl).toLocaleString('en-IN'),cls:totalPosPnl>=0?'c-bull':'c-bear'},
-    {label:'Holdings P&L',val:(totalHldPnl>=0?'+':'')+'₹'+Math.round(totalHldPnl).toLocaleString('en-IN'),cls:totalHldPnl>=0?'c-bull':'c-bear'},
-    {label:'Invested',val:'₹'+Math.round(invested).toLocaleString('en-IN'),cls:'c-dim'},
-    {label:'Current Value',val:'₹'+Math.round(current).toLocaleString('en-IN'),cls:'c-amb'},
-    {label:'GTT Active',val:_brokerData.gtt.filter(g=>g.status==='active').length,cls:'c-teal'},
-  ].map(b=>`<div class="brk-sum-box"><label>${b.label}</label><span class="${b.cls}">${b.val}</span></div>`).join('');
+    {label:'Open Orders',       val:openOrders,                          plain:true,   cls:'c-amb' },
+    {label:'Positions P&L',     val:totalPosPnl,   plain:false},
+    {label:"Day's P&L (All)",   val:totalDayPnl,   plain:false},
+    {label:'Holdings P&L',      val:totalHldPnl,   plain:false},
+    {label:'✅ Realised P&L',   val:totalRealised, plain:false},
+    {label:'Total P&L',         val:totalPnlAll,   plain:false, bold:true},
+    {label:'Invested',          val:'₹'+Math.round(invested).toLocaleString('en-IN'), plain:true, cls:'c-dim'},
+    {label:'Current Value',     val:'₹'+Math.round(current).toLocaleString('en-IN'),  plain:true, cls:'c-amb'},
+    {label:'GTT Active',        val:_brokerData.gtt.filter(g=>g.status==='active').length, plain:true, cls:'c-teal'},
+  ].map(b=>{
+    const valHtml=b.plain
+      ?`<span class="${b.cls||''}" style="${b.bold?'font-size:14px;font-weight:800':''}">${b.val}</span>`
+      :pnlFmt(b.val);
+    return`<div class="brk-sum-box" style="${!b.plain&&b.val<0?'border-left:2px solid var(--bear)':!b.plain&&b.val>0?'border-left:2px solid var(--bull)':''}"><label>${b.label}</label><span>${valHtml}</span></div>`;
+  }).join('');
 }
 function renderBrokerOrders(){const tb=document.getElementById('brkOrdersBody');if(!tb)return;const orders=_brokerData.orders;if(!orders.length){tb.innerHTML='<tr><td colspan="9" class="empty">No orders today</td></tr>';return}tb.innerHTML=orders.map(o=>{const sCls=o.status==='COMPLETE'?'c-bull':o.status==='REJECTED'?'c-bear':o.status==='CANCELLED'?'c-dim':'c-amb',dCls=o.transaction_type==='BUY'?'c-bull':'c-bear',t=o.order_timestamp?new Date(o.order_timestamp).toLocaleTimeString('en-IN'):'—';return`<tr><td class="c-dim" style="font-size:8px">${t}</td><td><strong>${o.tradingsymbol}</strong></td><td class="${dCls}"><strong>${o.transaction_type}</strong></td><td class="c-dim">${o.order_type}</td><td>${o.quantity}</td><td class="c-dim">${o.price>0?'₹'+o.price:'MKT'}</td><td class="c-amb">${o.average_price>0?'₹'+o.average_price.toFixed(2):'—'}</td><td class="${sCls}"><strong>${o.status}</strong></td><td class="c-dim" style="font-size:8px">${o.order_id}</td></tr>`}).join('')}
 function renderBrokerPositions(){const tb=document.getElementById('brkPosBody');if(!tb)return;const pos=_brokerData.positions;if(!pos.length){tb.innerHTML='<tr><td colspan="9" class="empty">No open positions</td></tr>';return}tb.innerHTML=pos.map(p=>{const pnl=p.pnl||0,dayPnl=p.day_m2m||0,pnlCls=pnl>=0?'c-bull':'c-bear',dayPnlCls=dayPnl>=0?'c-bull':'c-bear',pct=p.average_price>0?(pnl/Math.abs(p.average_price*p.quantity)*100):0,cmp=p.last_price||0,exitDir=p.quantity>0?'SELL':'BUY',exitQty=Math.abs(p.quantity);return`<tr><td><strong>${p.tradingsymbol}</strong></td><td class="c-dim">${p.product}</td><td class="${p.quantity>0?'c-bull':'c-bear'}">${p.quantity>0?'+':''}${p.quantity}</td><td class="c-dim">₹${(p.average_price||0).toFixed(2)}</td><td>₹${cmp.toFixed(2)}</td><td class="${pnlCls}"><strong>${pnl>=0?'+':''}₹${Math.round(pnl).toLocaleString('en-IN')}</strong></td><td class="${pnlCls}">${pnl>=0?'+':''}${pct.toFixed(2)}%</td><td class="${dayPnlCls}">${dayPnl>=0?'+':''}₹${Math.round(dayPnl).toLocaleString('en-IN')}</td><td><button class="${exitDir==='SELL'?'ob-sell':'ob-buy'}" onclick="exitBrokerPosition('${p.tradingsymbol}','${exitDir}',${cmp},${exitQty},'${p.product}')">${exitDir==='SELL'?'▼ SELL':'▲ BUY'}</button></td></tr>`}).join('')}
-function renderBrokerHoldings(){const tb=document.getElementById('brkHldBody');if(!tb)return;const hld=_brokerData.holdings;if(!hld.length){tb.innerHTML='<tr><td colspan="10" class="empty">No holdings</td></tr>';return}const sorted=[...hld].sort((a,b)=>(b.pnl||0)-(a.pnl||0));tb.innerHTML=sorted.map(h=>{const pnl=h.pnl||0,dayPnl=h.day_change_percentage||0,pnlCls=pnl>=0?'c-bull':'c-bear',dayCls=dayPnl>=0?'c-bull':'c-bear',invested=(h.average_price||0)*(h.quantity||0),current=(h.last_price||0)*(h.quantity||0),pct=invested>0?((current-invested)/invested*100):0,cmp=h.last_price||0;return`<tr><td><strong>${h.tradingsymbol}</strong></td><td>${h.quantity}</td><td class="c-dim">₹${(h.average_price||0).toFixed(2)}</td><td>₹${cmp.toFixed(2)}</td><td class="c-dim">₹${Math.round(invested).toLocaleString('en-IN')}</td><td class="c-amb">₹${Math.round(current).toLocaleString('en-IN')}</td><td class="${pnlCls}"><strong>${pnl>=0?'+':''}₹${Math.round(pnl).toLocaleString('en-IN')}</strong></td><td class="${pnlCls}">${pct>=0?'+':''}${pct.toFixed(2)}%</td><td class="${dayCls}">${dayPnl>=0?'+':''}${dayPnl.toFixed(2)}%</td><td><button class="ob-sell" onclick="exitBrokerPosition('${h.tradingsymbol}','SELL',${cmp},${h.quantity},'CNC')">▼ SELL</button></td></tr>`}).join('')}
+function renderBrokerHoldings(){
+  const tb=document.getElementById('brkHldBody');
+  const strip=document.getElementById('hldSummaryStrip');
+  if(!tb)return;
+  const hld=_brokerData.holdings;
+  if(!hld.length){
+    tb.innerHTML='<tr><td colspan="10" class="empty">No holdings — click Refresh All to load</td></tr>';
+    if(strip)strip.innerHTML='';
+    return;
+  }
+
+  // ── Compute totals ──
+  let totalInvested=0,totalCurrent=0,totalPnl=0,totalDayPnl=0,totalRealised=0;
+  hld.forEach(h=>{
+    const qty=h.quantity||0,avgCost=h.average_price||0,ltp=h.last_price||0;
+    const inv=avgCost*qty, cur=ltp*qty;
+    // CORRECT day P&L: day_change is per-share change from prev close, multiply by qty
+    const dayPnl=(h.day_change||0)*qty;
+    totalInvested+=inv; totalCurrent+=cur;
+    totalPnl+=h.pnl||0;
+    totalDayPnl+=dayPnl;
+    // realised_quantity exists but realised P&L amount needs close_price
+    // Use: realised_quantity * (sell_avg - avg_cost) approximated from available fields
+    // Zerodha doesn't expose realised P&L directly in holdings endpoint — show from positions
+  });
+  const totalPnlPct=totalInvested>0?(totalPnl/totalInvested*100):0;
+  const totalDayPnlPct=totalInvested>0?(totalDayPnl/totalInvested*100):0;
+
+  // ── Summary strip ──
+  if(strip){
+    function sc(v){return v>=0?'c-bull':'c-bear'}
+    function sf(v,inv){return `<span class="${sc(v)}">${v>=0?'+':''}₹${Math.round(Math.abs(v)).toLocaleString('en-IN')}</span><span style="font-size:8px;color:var(--text2);margin-left:4px">(${inv>0?((v/inv*100)>=0?'+':'')+(v/inv*100).toFixed(2):'—'}%)</span>`}
+    strip.innerHTML=`
+      <div class="brk-sum-box" style="border-left:3px solid var(--bull)"><label>Invested Value</label><span>₹${Math.round(totalInvested).toLocaleString('en-IN')}</span></div>
+      <div class="brk-sum-box" style="border-left:3px solid var(--amber)"><label>Current Value</label><span>₹${Math.round(totalCurrent).toLocaleString('en-IN')}</span></div>
+      <div class="brk-sum-box" style="border-left:3px solid ${totalPnl>=0?'var(--bull)':'var(--bear)'}"><label>Total P&L</label><span>${sf(totalPnl,totalInvested)}</span></div>
+      <div class="brk-sum-box" style="border-left:3px solid ${totalDayPnl>=0?'var(--teal)':'var(--bear)'}"><label>Day's P&L</label><span>${sf(totalDayPnl,totalInvested)}</span></div>
+      <div class="brk-sum-box" style="border-left:3px solid var(--text3)"><label>Holdings</label><span class="c-dim">${hld.length} stocks</span></div>
+    `;
+  }
+
+  // ── Sort: biggest loss first (like Kite default) ──
+  const sorted=[...hld].sort((a,b)=>{
+    // Sort by absolute P&L descending (losses show first in red like Kite)
+    return (a.pnl||0)-(b.pnl||0);
+  });
+
+  tb.innerHTML=sorted.map(h=>{
+    const qty        = h.quantity||0;
+    const t1qty      = h.t1_quantity||0;  // unsettled qty bought today
+    const avgCost    = h.average_price||0;
+    const ltp        = h.last_price||0;
+    const invested   = avgCost*qty;
+    const current    = ltp*qty;
+    const pnl        = h.pnl||0;                         // unrealised P&L (Zerodha computes this)
+    const pnlPct     = invested>0?(pnl/invested*100):0;
+    // CORRECT: day_change is per-share movement from prev close; day_change_percentage is that %
+    const dayPnl     = (h.day_change||0)*qty;
+    const dayPnlPct  = h.day_change_percentage||0;
+    // Realised P&L — Zerodha positions API `realised` field for any sold portion today
+    // Holdings endpoint doesn't expose this directly; pull from positions if available
+    const posMatch   = _brokerData.positions.find(p=>p.tradingsymbol===h.tradingsymbol&&p.product==='CNC');
+    const realisedPnl= posMatch?(posMatch.realised||0):null;
+
+    const pnlCls  = pnl>=0?'c-bull':'c-bear';
+    const dayCls  = dayPnl>=0?'c-bull':'c-bear';
+    const relCls  = realisedPnl===null?'c-dim':realisedPnl>=0?'c-bull':'c-bear';
+
+    // T1 badge (unsettled today's purchase)
+    const t1Badge = t1qty>0?`<span class="hld-t1">T1: ${t1qty}</span>`:'';
+
+    // Two-line P&L cells (matching Kite)
+    const pnlCell=`<div class="pnl-cell">
+      <span class="pnl-amt ${pnlCls}">${pnl>=0?'+':''}₹${Math.round(Math.abs(pnl)).toLocaleString('en-IN')}</span>
+      <span class="pnl-pct ${pnlCls}">${pnlPct>=0?'+':''}${pnlPct.toFixed(2)}%</span>
+    </div>`;
+    const dayCell=`<div class="pnl-cell">
+      <span class="pnl-amt ${dayCls}">${dayPnl>=0?'+':''}₹${Math.round(Math.abs(dayPnl)).toLocaleString('en-IN')}</span>
+      <span class="pnl-pct ${dayCls}">${dayPnlPct>=0?'+':''}${dayPnlPct.toFixed(2)}%</span>
+    </div>`;
+
+    return`<tr>
+      <td><span class="hld-sym">${h.tradingsymbol}</span>${t1Badge}</td>
+      <td style="font-family:var(--mono);font-weight:700">₹${ltp.toFixed(2)}</td>
+      <td style="text-align:right">${pnlCell}</td>
+      <td style="text-align:right">${dayCell}</td>
+      <td style="text-align:right;font-family:var(--mono)">₹${Math.round(current).toLocaleString('en-IN')}</td>
+      <td style="text-align:right;font-family:var(--mono);color:var(--text2)">₹${Math.round(invested).toLocaleString('en-IN')}</td>
+      <td style="text-align:center;font-family:var(--mono);font-weight:700">${qty}${t1qty>0?`<div style="font-size:7px;color:var(--amber)">+${t1qty} T1</div>`:''}
+      </td>
+      <td style="text-align:right;font-family:var(--mono);color:var(--text2)">₹${avgCost.toFixed(2)}</td>
+      <td style="text-align:right;font-family:var(--mono)" class="${relCls}">
+        ${realisedPnl!==null?(realisedPnl>=0?'+':'')+'₹'+Math.round(Math.abs(realisedPnl)).toLocaleString('en-IN'):'<span class="c-dim">—</span>'}
+      </td>
+      <td><button class="ob-sell" onclick="exitBrokerPosition('${h.tradingsymbol}','SELL',${ltp},${qty},'CNC')">▼ SELL</button></td>
+    </tr>`;
+  }).join('');
+}
 function renderBrokerGTT(){const tb=document.getElementById('brkGttBody');if(!tb)return;const gtt=_brokerData.gtt;if(!gtt.length){tb.innerHTML='<tr><td colspan="9" class="empty">No GTT orders</td></tr>';return}tb.innerHTML=gtt.map(g=>{const sCls=g.status==='active'?'c-bull':g.status==='triggered'?'c-amb':'c-dim',triggers=g.condition?.trigger_values||[],tp=triggers.length>1?'₹'+triggers[1]:'—',sl=triggers.length>0?'₹'+triggers[0]:'—',qty=g.orders&&g.orders.length?g.orders[0].quantity:'—',created=g.created_at?new Date(g.created_at).toLocaleDateString('en-IN'):'—';return`<tr><td><strong>${g.condition?.tradingsymbol||'—'}</strong></td><td class="c-dim">${g.type}</td><td class="c-dim">₹${g.condition?.last_price||'—'}</td><td class="c-bull">${tp}</td><td class="c-bear">${sl}</td><td>${qty}</td><td class="${sCls}"><strong>${g.status}</strong></td><td class="c-dim" style="font-size:8px">${created}</td><td>${g.status==='active'?`<button class="btn btn-r" style="font-size:7px;padding:1px 5px" onclick="deleteGTT(${g.id})">Delete</button>`:'—'}</td></tr>`}).join('')}
 async function deleteGTT(gttId){if(!confirm(`Delete GTT #${gttId}?`))return;try{const res=await fetch(`${ZD_WORKER}/kite/gtt/triggers/${gttId}`,{method:'DELETE',headers:{'X-Kite-Version':'3','Authorization':`token ${zdApiKey}:${zdToken}`}});const j=await res.json();if(j.status==='success'){toast(`GTT #${gttId} deleted ✓`,'ok');fetchBrokerGTT()}else toast('GTT delete failed: '+j.message,'err')}catch(e){toast('GTT delete error','err')}}
 
@@ -2389,59 +2534,81 @@ function renderAllPositions(){
   // ── Build unified list ──
   const allRows=[];
 
-  // Positions (CNC = delivery, MIS/BO/CO = intraday)
+  // Positions — filter out zero-qty CNC (already captured in holdings)
   _brokerData.positions.forEach(p=>{
+    if(p.quantity===0&&(p.product==='CNC'||p.product==='NRML'))return; // skip settled delivery
     const isDelivery=p.product==='CNC'||p.product==='NRML';
     const typeLabel=isDelivery?'delivery':'intraday';
-    const avgCost=p.average_price||0,cmp=p.last_price||0,qty=Math.abs(p.quantity)||0;
-    const invested=avgCost*qty,current=cmp*qty;
+    const avgCost=p.average_price||0,cmp=p.last_price||0,qty=p.quantity||0;
+    const invested=Math.abs(avgCost*qty),current=Math.abs(cmp*qty);
     const totalPnl=p.pnl||0;
-    const totalPnlPct=invested>0?(totalPnl/Math.abs(invested)*100):0;
+    const totalPnlPct=invested>0?(totalPnl/invested*100):0;
+    // CORRECT: day_m2m is the day's mark-to-market P&L for positions
     const dayPnl=p.day_m2m||0;
-    const dayPnlPct=invested>0?(dayPnl/Math.abs(invested)*100):0;
-    allRows.push({symbol:p.tradingsymbol,type:typeLabel,product:p.product,qty:p.quantity,avgCost,cmp,invested,current,totalPnl,totalPnlPct,dayPnl,dayPnlPct,statusLabel:p.quantity>0?'LONG':'SHORT',isHolding:false});
+    const dayPnlPct=invested>0?(dayPnl/invested*100):0;
+    // Realised P&L — for intraday/delivery positions that had partial exits
+    const realisedPnl=p.realised||0;
+    allRows.push({
+      symbol:p.tradingsymbol,type:typeLabel,product:p.product,
+      qty,avgCost,cmp,invested,current,
+      totalPnl,totalPnlPct,dayPnl,dayPnlPct,realisedPnl,
+      statusLabel:qty>0?'LONG':qty<0?'SHORT':'CLOSED',isHolding:false
+    });
   });
 
-  // Holdings (always delivery / long-term)
+  // Holdings — CORRECT day P&L: day_change (per share) × qty
   _brokerData.holdings.forEach(h=>{
     const avgCost=h.average_price||0,cmp=h.last_price||0,qty=h.quantity||0;
+    if(qty===0)return; // skip zero-qty holdings
     const invested=avgCost*qty,current=cmp*qty;
     const totalPnl=h.pnl||0;
     const totalPnlPct=invested>0?(totalPnl/invested*100):0;
-    // Day P&L for holdings: use day_change_percentage × invested
+    // CORRECT: day_change is per-share, day_change_percentage is already %
+    const dayPnl=(h.day_change||0)*qty;
     const dayPnlPct=h.day_change_percentage||0;
-    const dayPnl=(dayPnlPct/100)*invested;
-    allRows.push({symbol:h.tradingsymbol,type:'holdings',product:'CNC',qty,avgCost,cmp,invested,current,totalPnl,totalPnlPct,dayPnl,dayPnlPct,statusLabel:'HOLDING',isHolding:true});
+    // Realised from positions if any sold today
+    const posMatch=_brokerData.positions.find(pos=>pos.tradingsymbol===h.tradingsymbol&&pos.product==='CNC');
+    const realisedPnl=posMatch?(posMatch.realised||0):0;
+    allRows.push({
+      symbol:h.tradingsymbol,type:'holdings',product:'CNC',
+      qty,avgCost,cmp,invested,current,
+      totalPnl,totalPnlPct,dayPnl,dayPnlPct,realisedPnl,
+      statusLabel:'HOLDING',isHolding:true,
+      t1qty:h.t1_quantity||0
+    });
   });
 
   // ── Compute summary totals ──
   const delivRows =allRows.filter(r=>r.type==='delivery');
   const intraRows =allRows.filter(r=>r.type==='intraday');
   const hldRows   =allRows.filter(r=>r.type==='holdings');
-  const delivPnl  =delivRows.reduce((s,r)=>s+r.totalPnl,0);
-  const intraPnl  =intraRows.reduce((s,r)=>s+r.totalPnl,0);
-  const hldPnl    =hldRows.reduce((s,r)=>s+r.totalPnl,0);
-  const dayPnlAll =allRows.reduce((s,r)=>s+r.dayPnl,0);
-  const totalPnlAll=delivPnl+intraPnl+hldPnl;
-  const delivInvested=delivRows.reduce((s,r)=>s+r.invested,0);
-  const intraInvested=intraRows.reduce((s,r)=>s+r.invested,0);
-  const hldInvested  =hldRows.reduce((s,r)=>s+r.invested,0);
 
-  function fmt(v){return(v>=0?'+':'')+'₹'+Math.round(Math.abs(v)).toLocaleString('en-IN')+(v<0?' loss':'')}
-  function fmtPct(v){return(v>=0?'+':'')+v.toFixed(2)+'%'}
+  const delivPnl      =delivRows.reduce((s,r)=>s+r.totalPnl,0);
+  const intraPnl      =intraRows.reduce((s,r)=>s+r.totalPnl,0);
+  const hldPnl        =hldRows.reduce((s,r)=>s+r.totalPnl,0);
+  const dayPnlAll     =allRows.reduce((s,r)=>s+r.dayPnl,0);
+  const totalPnlAll   =delivPnl+intraPnl+hldPnl;
+  const realisedAll   =allRows.reduce((s,r)=>s+r.realisedPnl,0);
+  const delivInvested =delivRows.reduce((s,r)=>s+r.invested,0);
+  const intraInvested =intraRows.reduce((s,r)=>s+r.invested,0);
+  const hldInvested   =hldRows.reduce((s,r)=>s+r.invested,0);
+
   function cls(v){return v>=0?'c-bull':'c-bear'}
+  function fmt(v){return(v>=0?'+':'')+'₹'+Math.round(Math.abs(v)).toLocaleString('en-IN')}
 
-  // Update summary cards
-  const delivPnlEl=document.getElementById('apDelivPnl');if(delivPnlEl){delivPnlEl.textContent=(delivPnl>=0?'+':'')+'₹'+Math.round(Math.abs(delivPnl)).toLocaleString('en-IN');delivPnlEl.className='aval '+cls(delivPnl)}
-  const delivPctEl=document.getElementById('apDelivPnlPct');if(delivPctEl)delivPctEl.textContent=`${delivRows.length} delivery positions · Invested ₹${Math.round(delivInvested).toLocaleString('en-IN')}`;
-  const intraPnlEl=document.getElementById('apIntraPnl');if(intraPnlEl){intraPnlEl.textContent=(intraPnl>=0?'+':'')+'₹'+Math.round(Math.abs(intraPnl)).toLocaleString('en-IN');intraPnlEl.className='aval '+cls(intraPnl)}
-  const intraPctEl=document.getElementById('apIntraPnlPct');if(intraPctEl)intraPctEl.textContent=`${intraRows.length} intraday positions · Invested ₹${Math.round(intraInvested).toLocaleString('en-IN')}`;
-  const dayPnlEl=document.getElementById('apDayPnl');if(dayPnlEl){dayPnlEl.textContent=(dayPnlAll>=0?'+':'')+'₹'+Math.round(Math.abs(dayPnlAll)).toLocaleString('en-IN');dayPnlEl.className='aval '+cls(dayPnlAll)}
-  const daySubEl=document.getElementById('apDayPnlSub');if(daySubEl)daySubEl.textContent=`Today's M2M across ${allRows.length} positions`;
-  const totPnlEl=document.getElementById('apTotalPnl');if(totPnlEl){totPnlEl.textContent=(totalPnlAll>=0?'+':'')+'₹'+Math.round(Math.abs(totalPnlAll)).toLocaleString('en-IN');totPnlEl.className='aval '+cls(totalPnlAll)}
-  const totSubEl=document.getElementById('apTotalPnlSub');if(totSubEl)totSubEl.textContent=`Delivery ${fmt(delivPnl)} + Intraday ${fmt(intraPnl)} + Holdings ${fmt(hldPnl)}`;
-  const hldPnlEl=document.getElementById('apHldPnl');if(hldPnlEl){hldPnlEl.textContent=(hldPnl>=0?'+':'')+'₹'+Math.round(Math.abs(hldPnl)).toLocaleString('en-IN');hldPnlEl.className='aval '+cls(hldPnl)}
-  const hldSubEl=document.getElementById('apHldPnlSub');if(hldSubEl)hldSubEl.textContent=`${hldRows.length} holdings · Invested ₹${Math.round(hldInvested).toLocaleString('en-IN')}`;
+  // ── Update summary cards ──
+  const upd=(id,val,subId,sub)=>{
+    const el=document.getElementById(id);if(el){el.textContent=fmt(val);el.className='aval '+cls(val)}
+    const sel=document.getElementById(subId);if(sel)sel.textContent=sub;
+  };
+  upd('apDelivPnl',delivPnl,'apDelivPnlPct',`${delivRows.length} delivery positions · ₹${Math.round(delivInvested).toLocaleString('en-IN')} invested`);
+  upd('apIntraPnl',intraPnl,'apIntraPnlPct',`${intraRows.length} intraday positions · ₹${Math.round(intraInvested).toLocaleString('en-IN')} invested`);
+  upd('apDayPnl',dayPnlAll,'apDayPnlSub',`Today's M2M across ${allRows.length} positions`);
+  upd('apTotalPnl',totalPnlAll,'apTotalPnlSub',`Delivery ${fmt(delivPnl)} + Intraday ${fmt(intraPnl)} + Holdings ${fmt(hldPnl)}`);
+  upd('apHldPnl',hldPnl,'apHldPnlSub',`${hldRows.length} holdings · ₹${Math.round(hldInvested).toLocaleString('en-IN')} invested`);
+  // Realised P&L card
+  const rEl=document.getElementById('apRealisedPnl');if(rEl){rEl.textContent=fmt(realisedAll);rEl.className='aval '+cls(realisedAll)}
+  const rSub=document.getElementById('apRealisedSub');if(rSub)rSub.textContent=`Booked today from ${allRows.filter(r=>r.realisedPnl!==0).length} closed trades`;
 
   // ── Filter ──
   let filtered=allRows;
@@ -2450,41 +2617,78 @@ function renderAllPositions(){
   else if(typeFilter==='holdings')filtered=hldRows;
 
   // ── Sort ──
-  if(sortFilter==='pnl_desc')filtered.sort((a,b)=>b.totalPnl-a.totalPnl);
-  else if(sortFilter==='pnl_asc')filtered.sort((a,b)=>a.totalPnl-b.totalPnl);
-  else if(sortFilter==='sym')filtered.sort((a,b)=>a.symbol.localeCompare(b.symbol));
-  else if(sortFilter==='daypnl')filtered.sort((a,b)=>b.dayPnl-a.dayPnl);
+  if(sortFilter==='pnl_desc')      filtered.sort((a,b)=>b.totalPnl-a.totalPnl);
+  else if(sortFilter==='pnl_asc')  filtered.sort((a,b)=>a.totalPnl-b.totalPnl);
+  else if(sortFilter==='sym')      filtered.sort((a,b)=>a.symbol.localeCompare(b.symbol));
+  else if(sortFilter==='daypnl')   filtered.sort((a,b)=>b.dayPnl-a.dayPnl);
 
-  const countEl=document.getElementById('apCount');if(countEl)countEl.textContent=`Showing ${filtered.length} of ${allRows.length} positions`;
+  const countEl=document.getElementById('apCount');
+  if(countEl)countEl.textContent=`Showing ${filtered.length} of ${allRows.length} positions`;
 
   const tb=document.getElementById('brkAllPosBody');if(!tb)return;
-  if(!filtered.length){tb.innerHTML='<tr><td colspan="15" class="empty">No positions found — click Refresh All to load data</td></tr>';return}
+  if(!filtered.length){
+    tb.innerHTML='<tr><td colspan="16" class="empty">No positions found — click Refresh All to load data</td></tr>';
+    return;
+  }
 
   tb.innerHTML=filtered.map((r,i)=>{
-    const pnlCls=r.totalPnl>=0?'c-bull':'c-bear',dayCls=r.dayPnl>=0?'c-bull':'c-bear';
-    const typeBadge=r.type==='delivery'?'<span class="b b-bull" style="font-size:7px">📦 DELIVERY</span>':r.type==='intraday'?'<span class="b b-kite" style="font-size:7px">⚡ INTRADAY</span>':'<span class="b b-pur" style="font-size:7px">🏦 HOLDING</span>';
-    const statusBadge=r.statusLabel==='LONG'?'<span class="b b-bull" style="font-size:7px">LONG</span>':r.statusLabel==='SHORT'?'<span class="b b-bear" style="font-size:7px">SHORT</span>':'<span class="b b-dim" style="font-size:7px">HOLD</span>';
-    const rowBg=r.totalPnl>=0?'rgba(5,150,105,.03)':'rgba(220,38,38,.03)';
-    // Exit button — only for positions, not holdings (holdings need a separate sell flow)
+    const pnlCls =r.totalPnl>=0?'c-bull':'c-bear';
+    const dayCls =r.dayPnl>=0?'c-bull':'c-bear';
+    const relCls =r.realisedPnl>0?'c-bull':r.realisedPnl<0?'c-bear':'c-dim';
+    const rowBg  =r.totalPnl>=0?'rgba(5,150,105,.03)':'rgba(220,38,38,.03)';
+
+    const typeBadge=r.type==='delivery'
+      ?'<span class="b b-bull" style="font-size:7px">📦 DELIVERY</span>'
+      :r.type==='intraday'
+        ?'<span class="b b-kite" style="font-size:7px">⚡ INTRADAY</span>'
+        :'<span class="b b-pur" style="font-size:7px">🏦 HOLDING</span>';
+
+    const statusBadge=r.statusLabel==='LONG'
+      ?'<span class="b b-bull" style="font-size:7px">LONG</span>'
+      :r.statusLabel==='SHORT'
+        ?'<span class="b b-bear" style="font-size:7px">SHORT</span>'
+        :r.statusLabel==='CLOSED'
+          ?'<span class="b b-dim" style="font-size:7px">CLOSED</span>'
+          :'<span class="b b-dim" style="font-size:7px">HOLD</span>';
+
+    // T1 badge for holdings
+    const t1=r.t1qty>0?`<div style="font-size:7px;color:var(--amber)">+${r.t1qty} T1</div>`:'';
+
     const exitBtn=r.isHolding
       ?`<button class="ob-sell" onclick="exitBrokerPosition('${r.symbol}','SELL',${r.cmp},${r.qty},'CNC')">▼ SELL</button>`
       :r.qty>0
         ?`<button class="ob-sell" onclick="exitBrokerPosition('${r.symbol}','SELL',${r.cmp},${Math.abs(r.qty)},'${r.product}')">▼ EXIT</button>`
-        :`<button class="ob-buy" onclick="exitBrokerPosition('${r.symbol}','BUY',${r.cmp},${Math.abs(r.qty)},'${r.product}')">▲ EXIT</button>`;
+        :r.qty<0
+          ?`<button class="ob-buy" onclick="exitBrokerPosition('${r.symbol}','BUY',${r.cmp},${Math.abs(r.qty)},'${r.product}')">▲ EXIT</button>`
+          :'<span class="c-dim" style="font-size:8px">CLOSED</span>';
+
     return`<tr style="background:${rowBg}">
       <td class="c-dim">${i+1}</td>
-      <td><strong>${r.symbol}</strong></td>
+      <td><strong>${r.symbol}</strong>${t1}</td>
       <td>${typeBadge}</td>
       <td class="c-dim">${r.product}</td>
-      <td class="${r.qty>0?'c-bull':r.qty<0?'c-bear':'c-dim'}">${r.qty>0?'+':''}${r.qty}</td>
-      <td class="c-dim">₹${r.avgCost.toFixed(2)}</td>
-      <td>₹${r.cmp.toFixed(2)}</td>
-      <td class="c-dim">₹${Math.round(r.invested).toLocaleString('en-IN')}</td>
-      <td class="c-amb">₹${Math.round(r.current).toLocaleString('en-IN')}</td>
-      <td class="${pnlCls}"><strong>${r.totalPnl>=0?'+':''}₹${Math.round(Math.abs(r.totalPnl)).toLocaleString('en-IN')}</strong></td>
-      <td class="${pnlCls}"><strong>${r.totalPnlPct>=0?'+':''}${r.totalPnlPct.toFixed(2)}%</strong></td>
-      <td class="${dayCls}">${r.dayPnl>=0?'+':''}₹${Math.round(Math.abs(r.dayPnl)).toLocaleString('en-IN')}</td>
-      <td class="${dayCls}">${r.dayPnlPct>=0?'+':''}${r.dayPnlPct.toFixed(2)}%</td>
+      <td class="${r.qty>0?'c-bull':r.qty<0?'c-bear':'c-dim'}" style="text-align:right">${r.qty>0?'+':''}${r.qty}</td>
+      <td class="c-dim" style="text-align:right">₹${r.avgCost.toFixed(2)}</td>
+      <td style="text-align:right">₹${r.cmp.toFixed(2)}</td>
+      <td class="c-dim" style="text-align:right">₹${Math.round(r.invested).toLocaleString('en-IN')}</td>
+      <td class="c-amb" style="text-align:right">₹${Math.round(r.current).toLocaleString('en-IN')}</td>
+      <td class="${pnlCls}" style="text-align:right">
+        <div class="pnl-cell">
+          <span class="pnl-amt ${pnlCls}">${r.totalPnl>=0?'+':''}₹${Math.round(Math.abs(r.totalPnl)).toLocaleString('en-IN')}</span>
+          <span class="pnl-pct ${pnlCls}">${r.totalPnlPct>=0?'+':''}${r.totalPnlPct.toFixed(2)}%</span>
+        </div>
+      </td>
+      <td></td>
+      <td class="${dayCls}" style="text-align:right">
+        <div class="pnl-cell">
+          <span class="pnl-amt ${dayCls}">${r.dayPnl>=0?'+':''}₹${Math.round(Math.abs(r.dayPnl)).toLocaleString('en-IN')}</span>
+          <span class="pnl-pct ${dayCls}">${r.dayPnlPct>=0?'+':''}${r.dayPnlPct.toFixed(2)}%</span>
+        </div>
+      </td>
+      <td></td>
+      <td class="${relCls}" style="text-align:right;font-family:var(--mono)">
+        ${r.realisedPnl!==0?(r.realisedPnl>=0?'+':'')+'₹'+Math.round(Math.abs(r.realisedPnl)).toLocaleString('en-IN'):'<span class="c-dim">—</span>'}
+      </td>
       <td>${statusBadge}</td>
       <td>${exitBtn}</td>
     </tr>`;
@@ -2492,14 +2696,31 @@ function renderAllPositions(){
 }
 
 function exportAllPosCSV(){
-  const tb=document.getElementById('brkAllPosBody');if(!tb)return;
-  const hdrs='#,Symbol,Type,Product,Qty,AvgCost,CMP,Invested,Current,TotalPnL,TotalPnL%,DayPnL,DayPnL%,Status';
-  const rows=['#,Symbol,Type,Product,Qty,AvgCost_INR,CMP_INR,Invested_INR,Current_INR,TotalPnL_INR,TotalPnL_Pct,DayPnL_INR,DayPnL_Pct,Status'];
-  document.querySelectorAll('#brkAllPosBody tr').forEach((tr,i)=>{
-    const cells=[...tr.querySelectorAll('td')];if(cells.length<14)return;
-    rows.push([i+1,cells[1].textContent.trim(),cells[2].textContent.trim(),cells[3].textContent.trim(),cells[4].textContent.trim(),cells[5].textContent.replace('₹','').trim(),cells[6].textContent.replace('₹','').trim(),cells[7].textContent.replace('₹','').replace(/,/g,'').trim(),cells[8].textContent.replace('₹','').replace(/,/g,'').trim(),cells[9].textContent.replace('₹','').replace(/,/g,'').trim(),cells[10].textContent.trim(),cells[11].textContent.replace('₹','').replace(/,/g,'').trim(),cells[12].textContent.trim(),cells[13].textContent.trim()].join(','));
+  // Build from live data objects (more reliable than scraping DOM)
+  const rows=[['#','Symbol','Type','Product','Qty','AvgCost_INR','LTP_INR','Invested_INR','Current_INR','TotalPnL_INR','TotalPnL_Pct','DayPnL_INR','DayPnL_Pct','RealisedPnL_INR','Status'].join(',')];
+  let idx=1;
+  _brokerData.positions.forEach(p=>{
+    if(p.quantity===0&&(p.product==='CNC'||p.product==='NRML'))return;
+    const qty=p.quantity||0,avg=p.average_price||0,cmp=p.last_price||0;
+    const inv=Math.abs(avg*qty),cur=Math.abs(cmp*qty),pnl=p.pnl||0;
+    const pnlPct=inv>0?(pnl/inv*100):0,dayPnl=p.day_m2m||0,dayPct=inv>0?(dayPnl/inv*100):0;
+    const type=p.product==='CNC'||p.product==='NRML'?'DELIVERY':'INTRADAY';
+    rows.push([idx++,p.tradingsymbol,type,p.product,qty,avg.toFixed(2),cmp.toFixed(2),Math.round(inv),Math.round(cur),Math.round(pnl),pnlPct.toFixed(2),Math.round(dayPnl),dayPct.toFixed(2),Math.round(p.realised||0),qty>0?'LONG':qty<0?'SHORT':'CLOSED'].join(','));
   });
-  const blob=new Blob([rows.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`nandi_all_positions_${new Date().toISOString().slice(0,10)}.csv`;a.click();toast('All positions exported','ok');
+  _brokerData.holdings.forEach(h=>{
+    const qty=h.quantity||0;if(qty===0)return;
+    const avg=h.average_price||0,cmp=h.last_price||0;
+    const inv=avg*qty,cur=cmp*qty,pnl=h.pnl||0;
+    const pnlPct=inv>0?(pnl/inv*100):0;
+    const dayPnl=(h.day_change||0)*qty,dayPct=h.day_change_percentage||0;
+    const posMatch=_brokerData.positions.find(pos=>pos.tradingsymbol===h.tradingsymbol&&pos.product==='CNC');
+    const realised=posMatch?(posMatch.realised||0):0;
+    rows.push([idx++,h.tradingsymbol,'HOLDING','CNC',qty,avg.toFixed(2),cmp.toFixed(2),Math.round(inv),Math.round(cur),Math.round(pnl),pnlPct.toFixed(2),Math.round(dayPnl),dayPct.toFixed(2),Math.round(realised),'HOLDING'].join(','));
+  });
+  const blob=new Blob([rows.join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`nandi_all_positions_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+  toast('All positions exported','ok');
 }
 
 function exitBrokerPosition(sym,direction,cmp,qty,product){
