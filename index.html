@@ -959,90 +959,83 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
     </table></div>
   </div>
 
-  <!-- ══ NEW: ALL POSITIONS P&L ══ -->
+  <!-- ══ REALISED P&L — CLOSED POSITIONS ══ -->
   <div id="brk-allpos" class="brk-panel card" style="display:none">
-    <div class="ct" style="background:rgba(13,148,136,.1);border-bottom:1px solid rgba(13,148,136,.25)">
-      <i class="fas fa-chart-pie" style="color:var(--teal)"></i>
-      <span style="color:var(--teal)">All Positions P&amp;L — Delivery + Intraday Combined</span>
-      <button class="btn btn-d" style="font-size:8px;padding:2px 7px;margin-left:auto" onclick="exportAllPosCSV()"><i class="fas fa-download"></i> Export CSV</button>
+    <div class="ct" style="background:rgba(13,148,136,.1);border-bottom:1px solid rgba(13,148,136,.25);padding:10px 14px;margin-bottom:0;display:flex;align-items:center;gap:8px">
+      <i class="fas fa-chart-line" style="color:var(--teal)"></i>
+      <span style="color:var(--teal);font-weight:700">Realised P&amp;L — Closed Positions (Today)</span>
+      <span style="font-family:var(--mono);font-size:8px;color:var(--text2)">Exit prices from completed orders · mirrors Zerodha Console</span>
+      <button class="btn btn-d" style="font-size:8px;padding:2px 8px;margin-left:auto" onclick="exportAllPosCSV()"><i class="fas fa-download"></i> Export CSV</button>
     </div>
 
-    <!-- Summary cards -->
-    <div class="allpos-summary" id="allPosSummary" style="margin-top:12px">
-      <div class="allpos-card delivery">
-        <label>📦 Delivery Total P&amp;L</label>
-        <div class="aval" id="apDelivPnl">—</div>
-        <div class="asub" id="apDelivPnlPct">Delivery (CNC) positions</div>
+    <!-- Console-style summary strip -->
+    <div style="display:flex;flex-wrap:wrap;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:150px;padding:14px 18px;border-right:1px solid var(--border)">
+        <div style="font-family:var(--mono);font-size:8px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Realised P&amp;L (Gross)</div>
+        <div style="font-family:var(--mono);font-size:22px;font-weight:800" id="apRealisedGross">—</div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--text3);margin-top:3px" id="apRealisedSub">From completed orders today</div>
       </div>
-      <div class="allpos-card intraday">
-        <label>⚡ Intraday Total P&amp;L</label>
-        <div class="aval" id="apIntraPnl">—</div>
-        <div class="asub" id="apIntraPnlPct">Intraday (MIS/BO/CO) positions</div>
+      <div style="flex:1;min-width:140px;padding:14px 18px;border-right:1px solid var(--border)">
+        <div style="font-family:var(--mono);font-size:8px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Winning Trades</div>
+        <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--bull)" id="apWinCount">—</div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--text3);margin-top:3px" id="apWinAmt">—</div>
       </div>
-      <div class="allpos-card day">
-        <label>📅 Day P&amp;L (All)</label>
-        <div class="aval" id="apDayPnl">—</div>
-        <div class="asub" id="apDayPnlSub">Today's marked-to-market</div>
+      <div style="flex:1;min-width:140px;padding:14px 18px;border-right:1px solid var(--border)">
+        <div style="font-family:var(--mono);font-size:8px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Losing Trades</div>
+        <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--bear)" id="apLossCount">—</div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--text3);margin-top:3px" id="apLossAmt">—</div>
       </div>
-      <div class="allpos-card total">
-        <label>💰 Overall Total P&amp;L</label>
-        <div class="aval" id="apTotalPnl">—</div>
-        <div class="asub" id="apTotalPnlSub">Delivery + Intraday + Holdings</div>
+      <div style="flex:1;min-width:140px;padding:14px 18px;border-right:1px solid var(--border)">
+        <div style="font-family:var(--mono);font-size:8px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Total Turnover</div>
+        <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--text2)" id="apTurnover">—</div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--text3);margin-top:3px" id="apTurnoverSub">Buy value + Sell value</div>
       </div>
-      <div class="allpos-card" style="border-top:3px solid var(--purple)">
-        <label>🏦 Holdings Unrealised</label>
-        <div class="aval" id="apHldPnl">—</div>
-        <div class="asub" id="apHldPnlSub">Long-term holding P&amp;L</div>
-      </div>
-      <div class="allpos-card" style="border-top:3px solid var(--kite)">
-        <label>✅ Realised P&amp;L (Today)</label>
-        <div class="aval" id="apRealisedPnl">—</div>
-        <div class="asub" id="apRealisedSub">Booked P&amp;L from closed trades</div>
+      <div style="flex:1;min-width:120px;padding:14px 18px;">
+        <div style="font-family:var(--mono);font-size:8px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Win Rate</div>
+        <div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--amber)" id="apWinRate">—</div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--text3);margin-top:3px" id="apWinRateSub">Today closed trades</div>
       </div>
     </div>
 
-    <!-- Toggle filter -->
-    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
-      <select class="fi" id="apTypeFilter" onchange="renderAllPositions()">
-        <option value="all">All Types</option>
-        <option value="delivery">Delivery only (CNC)</option>
-        <option value="intraday">Intraday only (MIS)</option>
-        <option value="holdings">Holdings only</option>
-      </select>
-      <select class="fi" id="apSortFilter" onchange="renderAllPositions()">
-        <option value="pnl_desc">Sort: Best P&L first</option>
-        <option value="pnl_asc">Sort: Worst P&L first</option>
+    <!-- Filter bar -->
+    <div style="display:flex;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border);align-items:center;flex-wrap:wrap;background:var(--bg3)">
+      <select class="fi" id="apSortFilter" onchange="renderAllPositions()" style="font-size:9px">
+        <option value="pnl_desc">Sort: Best P&amp;L first</option>
+        <option value="pnl_asc">Sort: Worst P&amp;L first</option>
         <option value="sym">Sort: Symbol A-Z</option>
-        <option value="daypnl">Sort: Day P&L</option>
+        <option value="time">Sort: Time (latest first)</option>
+        <option value="turnover">Sort: Turnover</option>
+      </select>
+      <select class="fi" id="apTypeFilter" onchange="renderAllPositions()" style="font-size:9px">
+        <option value="all">All closed trades</option>
+        <option value="wins">Winning only</option>
+        <option value="losses">Losing only</option>
+        <option value="delivery">Delivery (CNC)</option>
+        <option value="intraday">Intraday (MIS)</option>
       </select>
       <span style="font-family:var(--mono);font-size:9px;color:var(--text2)" id="apCount"></span>
     </div>
 
-    <!-- Combined table -->
+    <!-- Console-style table -->
     <div class="tw">
-      <table id="brkAllPosTbl">
+      <table id="brkAllPosTbl" style="font-size:10px">
         <thead>
           <tr>
-            <th>#</th>
-            <th>Symbol</th>
-            <th>Type</th>
-            <th>Product</th>
-            <th>Qty</th>
-            <th>Avg Cost ₹</th>
-            <th>LTP ₹</th>
-            <th>Invested ₹</th>
-            <th>Current ₹</th>
-            <th>Total P&amp;L ₹</th>
-            <th>Total P&amp;L %</th>
-            <th>Day P&amp;L ₹</th>
-            <th>Day P&amp;L %</th>
-            <th>Realised P&amp;L ₹</th>
-            <th>Status</th>
-            <th>Action</th>
+            <th style="min-width:110px;position:sticky;left:0;background:var(--bg3);z-index:2">Symbol</th>
+            <th style="text-align:center">Type</th>
+            <th style="text-align:right">Qty</th>
+            <th style="text-align:right">Buy Avg ₹</th>
+            <th style="text-align:right">Buy Value ₹</th>
+            <th style="text-align:right">Sell Avg ₹</th>
+            <th style="text-align:right">Sell Value ₹</th>
+            <th style="text-align:right;color:var(--amber);font-weight:900">Realised P&amp;L ₹</th>
+            <th style="text-align:right">P&amp;L %</th>
+            <th style="text-align:center">Time</th>
+            <th style="text-align:center">Re-enter</th>
           </tr>
         </thead>
         <tbody id="brkAllPosBody">
-          <tr><td colspan="15" class="empty">Click Refresh All to load combined positions</td></tr>
+          <tr><td colspan="11" class="empty">Click Refresh All to load closed positions for today</td></tr>
         </tbody>
       </table>
     </div>
@@ -2528,199 +2521,236 @@ async function deleteGTT(gttId){if(!confirm(`Delete GTT #${gttId}?`))return;try{
 // FIX 2: ALL POSITIONS P&L TAB — Delivery + Intraday + Holdings
 // ═══════════════════════════════════════════════════════════
 function renderAllPositions(){
-  const typeFilter=(document.getElementById('apTypeFilter')||{}).value||'all';
-  const sortFilter=(document.getElementById('apSortFilter')||{}).value||'pnl_desc';
+  const tb=document.getElementById('brkAllPosBody');
+  if(!tb)return;
 
-  // ── Build unified list ──
-  const allRows=[];
+  // ── Build closed trades from ORDERS (COMPLETE sells) + matching buys ──
+  // Strategy: pair completed SELL orders with completed BUY orders by symbol
+  // This mirrors exactly what Zerodha Console shows
 
-  // Positions — filter out zero-qty CNC (already captured in holdings)
-  _brokerData.positions.forEach(p=>{
-    if(p.quantity===0&&(p.product==='CNC'||p.product==='NRML'))return; // skip settled delivery
-    const isDelivery=p.product==='CNC'||p.product==='NRML';
-    const typeLabel=isDelivery?'delivery':'intraday';
-    const avgCost=p.average_price||0,cmp=p.last_price||0,qty=p.quantity||0;
-    const invested=Math.abs(avgCost*qty),current=Math.abs(cmp*qty);
-    const totalPnl=p.pnl||0;
-    const totalPnlPct=invested>0?(totalPnl/invested*100):0;
-    // CORRECT: day_m2m is the day's mark-to-market P&L for positions
-    const dayPnl=p.day_m2m||0;
-    const dayPnlPct=invested>0?(dayPnl/invested*100):0;
-    // Realised P&L — for intraday/delivery positions that had partial exits
-    const realisedPnl=p.realised||0;
-    allRows.push({
-      symbol:p.tradingsymbol,type:typeLabel,product:p.product,
-      qty,avgCost,cmp,invested,current,
-      totalPnl,totalPnlPct,dayPnl,dayPnlPct,realisedPnl,
-      statusLabel:qty>0?'LONG':qty<0?'SHORT':'CLOSED',isHolding:false
+  const orders=_brokerData.orders||[];
+  const completed=orders.filter(o=>o.status==='COMPLETE');
+
+  // Group by symbol
+  const bySymbol={};
+  completed.forEach(o=>{
+    const s=o.tradingsymbol;
+    if(!bySymbol[s])bySymbol[s]={buys:[],sells:[],product:o.product};
+    if(o.transaction_type==='BUY')bySymbol[s].buys.push(o);
+    else if(o.transaction_type==='SELL')bySymbol[s].sells.push(o);
+  });
+
+  // Also check positions for realised P&L field (covers intraday squaroffs)
+  const posMap={};
+  (_brokerData.positions||[]).forEach(p=>{posMap[p.tradingsymbol]=p});
+
+  // Build trade rows — one row per symbol that has BOTH buys and sells today
+  // OR symbols where positions show realised!=0
+  const rows=[];
+
+  Object.keys(bySymbol).forEach(sym=>{
+    const{buys,sells,product}=bySymbol[sym];
+    const hasSells=sells.length>0;
+    const hasBuys=buys.length>0;
+    // Only include if there's a completed exit (sell for long, buy for short)
+    if(!hasSells&&!hasBuys)return;
+
+    // Compute totals
+    const totalSellQty=sells.reduce((s,o)=>s+(o.quantity||0),0);
+    const totalBuyQty =buys.reduce((s,o)=>s+(o.quantity||0),0);
+    const sellValue   =sells.reduce((s,o)=>s+(o.average_price||o.price||0)*(o.quantity||0),0);
+    const buyValue    =buys.reduce((s,o)=>s+(o.average_price||o.price||0)*(o.quantity||0),0);
+    const sellAvg     =totalSellQty>0?sellValue/totalSellQty:0;
+    const buyAvg      =totalBuyQty>0?buyValue/totalBuyQty:0;
+
+    // Closed qty = min(buys, sells) for the trade
+    const closedQty=Math.min(totalBuyQty,totalSellQty)||Math.max(totalBuyQty,totalSellQty);
+
+    // Realised P&L: sell value - buy value (for completed round-trips)
+    // If only sells exist (selling holdings), use positions realised field
+    let realisedPnl=0;
+    const pos=posMap[sym];
+    if(hasBuys&&hasSells){
+      // True intraday round-trip: P&L = sell proceeds - buy cost (for matched qty)
+      const matchedQty=Math.min(totalBuyQty,totalSellQty);
+      realisedPnl=matchedQty*(sellAvg-buyAvg);
+    } else if(hasSells&&!hasBuys){
+      // Delivery exit: use positions realised or estimate from holdings avg
+      if(pos&&pos.realised!==undefined&&pos.realised!==0){
+        realisedPnl=pos.realised;
+      } else {
+        // Estimate from holdings avg price
+        const hld=(_brokerData.holdings||[]).find(h=>h.tradingsymbol===sym);
+        const avgCost=hld?hld.average_price:0;
+        if(avgCost>0)realisedPnl=(sellAvg-avgCost)*totalSellQty;
+        else if(pos)realisedPnl=pos.realised||0;
+      }
+    } else if(hasBuys&&!hasSells){
+      // Buy-only: open position, not yet closed — skip
+      return;
+    }
+
+    // Skip if P&L is 0 and no sells (truly open, not closed)
+    if(!hasSells)return;
+
+    const isDelivery=product==='CNC'||product==='NRML';
+    const latestTime=sells.length?sells.reduce((a,b)=>a.order_timestamp>b.order_timestamp?a:b).order_timestamp:'';
+    const timeStr=latestTime?new Date(latestTime).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}):'—';
+    const pnlPct=(buyValue>0&&hasBuys)?(realisedPnl/buyValue*100):(sellValue>0?(realisedPnl/sellValue*100):0);
+    const turnover=(hasBuys?buyValue:0)+sellValue;
+
+    rows.push({
+      sym,product,isDelivery,
+      qty:closedQty,
+      buyAvg:parseFloat(buyAvg.toFixed(2)),buyValue:parseFloat(buyValue.toFixed(2)),
+      sellAvg:parseFloat(sellAvg.toFixed(2)),sellValue:parseFloat(sellValue.toFixed(2)),
+      realisedPnl:parseFloat(realisedPnl.toFixed(2)),
+      pnlPct:parseFloat(pnlPct.toFixed(2)),
+      turnover,time:timeStr,hasBuys,hasSells
     });
   });
 
-  // Holdings — CORRECT day P&L: day_change (per share) × qty
-  _brokerData.holdings.forEach(h=>{
-    const avgCost=h.average_price||0,cmp=h.last_price||0,qty=h.quantity||0;
-    if(qty===0)return; // skip zero-qty holdings
-    const invested=avgCost*qty,current=cmp*qty;
-    const totalPnl=h.pnl||0;
-    const totalPnlPct=invested>0?(totalPnl/invested*100):0;
-    // CORRECT: day_change is per-share, day_change_percentage is already %
-    const dayPnl=(h.day_change||0)*qty;
-    const dayPnlPct=h.day_change_percentage||0;
-    // Realised from positions if any sold today
-    const posMatch=_brokerData.positions.find(pos=>pos.tradingsymbol===h.tradingsymbol&&pos.product==='CNC');
-    const realisedPnl=posMatch?(posMatch.realised||0):0;
-    allRows.push({
-      symbol:h.tradingsymbol,type:'holdings',product:'CNC',
-      qty,avgCost,cmp,invested,current,
-      totalPnl,totalPnlPct,dayPnl,dayPnlPct,realisedPnl,
-      statusLabel:'HOLDING',isHolding:true,
-      t1qty:h.t1_quantity||0
+  // Also pick up any positions with realised!=0 that weren't caught above
+  (_brokerData.positions||[]).forEach(p=>{
+    if(!(p.realised&&p.realised!==0))return;
+    if(rows.find(r=>r.sym===p.tradingsymbol))return; // already added
+    const hld=(_brokerData.holdings||[]).find(h=>h.tradingsymbol===p.tradingsymbol);
+    const avgCost=p.average_price||hld?.average_price||0;
+    const ltp=p.last_price||0;
+    const closedQty=p.sell_quantity||Math.abs(p.quantity)||0;
+    if(!closedQty)return;
+    const sellVal=ltp*closedQty,buyVal=avgCost*closedQty;
+    rows.push({
+      sym:p.tradingsymbol,product:p.product,isDelivery:p.product==='CNC',
+      qty:closedQty,
+      buyAvg:avgCost,buyValue:parseFloat(buyVal.toFixed(2)),
+      sellAvg:ltp,sellValue:parseFloat(sellVal.toFixed(2)),
+      realisedPnl:parseFloat((p.realised||0).toFixed(2)),
+      pnlPct:buyVal>0?parseFloat(((p.realised||0)/buyVal*100).toFixed(2)):0,
+      turnover:buyVal+sellVal,time:'—',hasBuys:true,hasSells:true
     });
   });
 
-  // ── Compute summary totals ──
-  const delivRows =allRows.filter(r=>r.type==='delivery');
-  const intraRows =allRows.filter(r=>r.type==='intraday');
-  const hldRows   =allRows.filter(r=>r.type==='holdings');
+  // ── Summary calculations ──
+  const wins=rows.filter(r=>r.realisedPnl>0);
+  const losses=rows.filter(r=>r.realisedPnl<0);
+  const totalRealised=rows.reduce((s,r)=>s+r.realisedPnl,0);
+  const totalWinAmt=wins.reduce((s,r)=>s+r.realisedPnl,0);
+  const totalLossAmt=losses.reduce((s,r)=>s+r.realisedPnl,0);
+  const totalTurnover=rows.reduce((s,r)=>s+r.turnover,0);
+  const winRate=rows.length?Math.round(wins.length/rows.length*100):0;
 
-  const delivPnl      =delivRows.reduce((s,r)=>s+r.totalPnl,0);
-  const intraPnl      =intraRows.reduce((s,r)=>s+r.totalPnl,0);
-  const hldPnl        =hldRows.reduce((s,r)=>s+r.totalPnl,0);
-  const dayPnlAll     =allRows.reduce((s,r)=>s+r.dayPnl,0);
-  const totalPnlAll   =delivPnl+intraPnl+hldPnl;
-  const realisedAll   =allRows.reduce((s,r)=>s+r.realisedPnl,0);
-  const delivInvested =delivRows.reduce((s,r)=>s+r.invested,0);
-  const intraInvested =intraRows.reduce((s,r)=>s+r.invested,0);
-  const hldInvested   =hldRows.reduce((s,r)=>s+r.invested,0);
+  function cls(v){return v>=0?'color:var(--bull)':'color:var(--bear)'}
+  function fmt(v){return(v>=0?'+':'')+'₹'+Math.abs(v).toLocaleString('en-IN',{maximumFractionDigits:0})}
 
-  function cls(v){return v>=0?'c-bull':'c-bear'}
-  function fmt(v){return(v>=0?'+':'')+'₹'+Math.round(Math.abs(v)).toLocaleString('en-IN')}
-
-  // ── Update summary cards ──
-  const upd=(id,val,subId,sub)=>{
-    const el=document.getElementById(id);if(el){el.textContent=fmt(val);el.className='aval '+cls(val)}
-    const sel=document.getElementById(subId);if(sel)sel.textContent=sub;
-  };
-  upd('apDelivPnl',delivPnl,'apDelivPnlPct',`${delivRows.length} delivery positions · ₹${Math.round(delivInvested).toLocaleString('en-IN')} invested`);
-  upd('apIntraPnl',intraPnl,'apIntraPnlPct',`${intraRows.length} intraday positions · ₹${Math.round(intraInvested).toLocaleString('en-IN')} invested`);
-  upd('apDayPnl',dayPnlAll,'apDayPnlSub',`Today's M2M across ${allRows.length} positions`);
-  upd('apTotalPnl',totalPnlAll,'apTotalPnlSub',`Delivery ${fmt(delivPnl)} + Intraday ${fmt(intraPnl)} + Holdings ${fmt(hldPnl)}`);
-  upd('apHldPnl',hldPnl,'apHldPnlSub',`${hldRows.length} holdings · ₹${Math.round(hldInvested).toLocaleString('en-IN')} invested`);
-  // Realised P&L card
-  const rEl=document.getElementById('apRealisedPnl');if(rEl){rEl.textContent=fmt(realisedAll);rEl.className='aval '+cls(realisedAll)}
-  const rSub=document.getElementById('apRealisedSub');if(rSub)rSub.textContent=`Booked today from ${allRows.filter(r=>r.realisedPnl!==0).length} closed trades`;
+  // Update summary strip
+  const rg=document.getElementById('apRealisedGross');
+  if(rg){rg.textContent=fmt(totalRealised);rg.style=cls(totalRealised)}
+  const rs=document.getElementById('apRealisedSub');
+  if(rs)rs.textContent=`${rows.length} closed trades today`;
+  const wc=document.getElementById('apWinCount');if(wc)wc.textContent=wins.length;
+  const wa=document.getElementById('apWinAmt');if(wa){wa.textContent=fmt(totalWinAmt);wa.style=cls(totalWinAmt)}
+  const lc=document.getElementById('apLossCount');if(lc)lc.textContent=losses.length;
+  const la=document.getElementById('apLossAmt');if(la){la.textContent=fmt(totalLossAmt);la.style=cls(totalLossAmt)}
+  const to=document.getElementById('apTurnover');
+  if(to)to.textContent='₹'+Math.round(totalTurnover).toLocaleString('en-IN');
+  const wr=document.getElementById('apWinRate');if(wr)wr.textContent=winRate+'%';
+  const ws=document.getElementById('apWinRateSub');
+  if(ws)ws.textContent=`${wins.length}W / ${losses.length}L`;
 
   // ── Filter ──
-  let filtered=allRows;
-  if(typeFilter==='delivery')filtered=delivRows;
-  else if(typeFilter==='intraday')filtered=intraRows;
-  else if(typeFilter==='holdings')filtered=hldRows;
+  const typeF=(document.getElementById('apTypeFilter')||{}).value||'all';
+  const sortF=(document.getElementById('apSortFilter')||{}).value||'pnl_desc';
+  let filtered=[...rows];
+  if(typeF==='wins')     filtered=wins;
+  else if(typeF==='losses')   filtered=losses;
+  else if(typeF==='delivery') filtered=rows.filter(r=>r.isDelivery);
+  else if(typeF==='intraday') filtered=rows.filter(r=>!r.isDelivery);
 
   // ── Sort ──
-  if(sortFilter==='pnl_desc')      filtered.sort((a,b)=>b.totalPnl-a.totalPnl);
-  else if(sortFilter==='pnl_asc')  filtered.sort((a,b)=>a.totalPnl-b.totalPnl);
-  else if(sortFilter==='sym')      filtered.sort((a,b)=>a.symbol.localeCompare(b.symbol));
-  else if(sortFilter==='daypnl')   filtered.sort((a,b)=>b.dayPnl-a.dayPnl);
+  if(sortF==='pnl_desc')   filtered.sort((a,b)=>b.realisedPnl-a.realisedPnl);
+  else if(sortF==='pnl_asc')  filtered.sort((a,b)=>a.realisedPnl-b.realisedPnl);
+  else if(sortF==='sym')      filtered.sort((a,b)=>a.sym.localeCompare(b.sym));
+  else if(sortF==='time')     filtered.sort((a,b)=>b.time.localeCompare(a.time));
+  else if(sortF==='turnover') filtered.sort((a,b)=>b.turnover-a.turnover);
 
   const countEl=document.getElementById('apCount');
-  if(countEl)countEl.textContent=`Showing ${filtered.length} of ${allRows.length} positions`;
+  if(countEl)countEl.textContent=`${filtered.length} of ${rows.length} trades`;
 
-  const tb=document.getElementById('brkAllPosBody');if(!tb)return;
   if(!filtered.length){
-    tb.innerHTML='<tr><td colspan="16" class="empty">No positions found — click Refresh All to load data</td></tr>';
+    tb.innerHTML=`<tr><td colspan="11" class="empty" style="padding:32px">
+      <div style="font-size:16px;margin-bottom:8px">No closed trades found today</div>
+      <div style="font-size:9px;color:var(--text3)">Complete sell orders appear here once executed · Click Refresh All to reload</div>
+    </td></tr>`;
     return;
   }
 
-  tb.innerHTML=filtered.map((r,i)=>{
-    const pnlCls =r.totalPnl>=0?'c-bull':'c-bear';
-    const dayCls =r.dayPnl>=0?'c-bull':'c-bear';
-    const relCls =r.realisedPnl>0?'c-bull':r.realisedPnl<0?'c-bear':'c-dim';
-    const rowBg  =r.totalPnl>=0?'rgba(5,150,105,.03)':'rgba(220,38,38,.03)';
+  tb.innerHTML=filtered.map(r=>{
+    const pnlCls=r.realisedPnl>=0?'c-bull':'c-bear';
+    const typeBadge=r.isDelivery
+      ?'<span class="b b-bull" style="font-size:7px">📦 CNC</span>'
+      :'<span class="b b-kite" style="font-size:7px">⚡ MIS</span>';
 
-    const typeBadge=r.type==='delivery'
-      ?'<span class="b b-bull" style="font-size:7px">📦 DELIVERY</span>'
-      :r.type==='intraday'
-        ?'<span class="b b-kite" style="font-size:7px">⚡ INTRADAY</span>'
-        :'<span class="b b-pur" style="font-size:7px">🏦 HOLDING</span>';
+    // Two-line P&L cell
+    const pnlCell=`<div class="pnl-cell" style="align-items:flex-end">
+      <span class="pnl-amt ${pnlCls}" style="font-size:11px">${r.realisedPnl>=0?'+':''}₹${Math.abs(r.realisedPnl).toLocaleString('en-IN',{maximumFractionDigits:0})}</span>
+      <span class="pnl-pct ${pnlCls}">${r.pnlPct>=0?'+':''}${r.pnlPct.toFixed(2)}%</span>
+    </div>`;
 
-    const statusBadge=r.statusLabel==='LONG'
-      ?'<span class="b b-bull" style="font-size:7px">LONG</span>'
-      :r.statusLabel==='SHORT'
-        ?'<span class="b b-bear" style="font-size:7px">SHORT</span>'
-        :r.statusLabel==='CLOSED'
-          ?'<span class="b b-dim" style="font-size:7px">CLOSED</span>'
-          :'<span class="b b-dim" style="font-size:7px">HOLD</span>';
+    // Row background: subtle green/red tint
+    const rowBg=r.realisedPnl>0?'rgba(5,150,105,.04)':r.realisedPnl<0?'rgba(220,38,38,.04)':'';
 
-    // T1 badge for holdings
-    const t1=r.t1qty>0?`<div style="font-size:7px;color:var(--amber)">+${r.t1qty} T1</div>`:'';
-
-    const exitBtn=r.isHolding
-      ?`<button class="ob-sell" onclick="exitBrokerPosition('${r.symbol}','SELL',${r.cmp},${r.qty},'CNC')">▼ SELL</button>`
-      :r.qty>0
-        ?`<button class="ob-sell" onclick="exitBrokerPosition('${r.symbol}','SELL',${r.cmp},${Math.abs(r.qty)},'${r.product}')">▼ EXIT</button>`
-        :r.qty<0
-          ?`<button class="ob-buy" onclick="exitBrokerPosition('${r.symbol}','BUY',${r.cmp},${Math.abs(r.qty)},'${r.product}')">▲ EXIT</button>`
-          :'<span class="c-dim" style="font-size:8px">CLOSED</span>';
+    // Re-enter button (buy again after selling)
+    const ltp=r.sellAvg||0;
+    const reEnterBtn=`<button class="ob-buy" onclick="showOrderModal('${r.sym}','BUY',${ltp},0,0,${r.qty})" title="Re-enter position">▲ BUY</button>`;
 
     return`<tr style="background:${rowBg}">
-      <td class="c-dim">${i+1}</td>
-      <td><strong>${r.symbol}</strong>${t1}</td>
-      <td>${typeBadge}</td>
-      <td class="c-dim">${r.product}</td>
-      <td class="${r.qty>0?'c-bull':r.qty<0?'c-bear':'c-dim'}" style="text-align:right">${r.qty>0?'+':''}${r.qty}</td>
-      <td class="c-dim" style="text-align:right">₹${r.avgCost.toFixed(2)}</td>
-      <td style="text-align:right">₹${r.cmp.toFixed(2)}</td>
-      <td class="c-dim" style="text-align:right">₹${Math.round(r.invested).toLocaleString('en-IN')}</td>
-      <td class="c-amb" style="text-align:right">₹${Math.round(r.current).toLocaleString('en-IN')}</td>
-      <td class="${pnlCls}" style="text-align:right">
-        <div class="pnl-cell">
-          <span class="pnl-amt ${pnlCls}">${r.totalPnl>=0?'+':''}₹${Math.round(Math.abs(r.totalPnl)).toLocaleString('en-IN')}</span>
-          <span class="pnl-pct ${pnlCls}">${r.totalPnlPct>=0?'+':''}${r.totalPnlPct.toFixed(2)}%</span>
-        </div>
+      <td style="position:sticky;left:0;background:${rowBg||'var(--bg2)'}">
+        <div style="font-family:var(--mono);font-weight:700;font-size:10px">${r.sym}</div>
+        <div style="font-family:var(--mono);font-size:7px;color:var(--text3)">${r.product}</div>
       </td>
+      <td style="text-align:center">${typeBadge}</td>
+      <td style="text-align:right;font-family:var(--mono);font-weight:700">${r.qty}</td>
+      <td style="text-align:right;font-family:var(--mono);color:var(--text2)">
+        ${r.hasBuys?'₹'+r.buyAvg.toLocaleString('en-IN',{minimumFractionDigits:2}):'<span class="c-dim">—</span>'}
+      </td>
+      <td style="text-align:right;font-family:var(--mono);color:var(--text2)">
+        ${r.hasBuys?'₹'+r.buyValue.toLocaleString('en-IN',{maximumFractionDigits:0}):'<span class="c-dim">—</span>'}
+      </td>
+      <td style="text-align:right;font-family:var(--mono)">₹${r.sellAvg.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+      <td style="text-align:right;font-family:var(--mono)">₹${r.sellValue.toLocaleString('en-IN',{maximumFractionDigits:0})}</td>
+      <td style="text-align:right">${pnlCell}</td>
       <td></td>
-      <td class="${dayCls}" style="text-align:right">
-        <div class="pnl-cell">
-          <span class="pnl-amt ${dayCls}">${r.dayPnl>=0?'+':''}₹${Math.round(Math.abs(r.dayPnl)).toLocaleString('en-IN')}</span>
-          <span class="pnl-pct ${dayCls}">${r.dayPnlPct>=0?'+':''}${r.dayPnlPct.toFixed(2)}%</span>
-        </div>
-      </td>
-      <td></td>
-      <td class="${relCls}" style="text-align:right;font-family:var(--mono)">
-        ${r.realisedPnl!==0?(r.realisedPnl>=0?'+':'')+'₹'+Math.round(Math.abs(r.realisedPnl)).toLocaleString('en-IN'):'<span class="c-dim">—</span>'}
-      </td>
-      <td>${statusBadge}</td>
-      <td>${exitBtn}</td>
+      <td style="text-align:center;font-family:var(--mono);font-size:9px;color:var(--text2)">${r.time}</td>
+      <td style="text-align:center">${reEnterBtn}</td>
     </tr>`;
   }).join('');
 }
 
 function exportAllPosCSV(){
-  // Build from live data objects (more reliable than scraping DOM)
-  const rows=[['#','Symbol','Type','Product','Qty','AvgCost_INR','LTP_INR','Invested_INR','Current_INR','TotalPnL_INR','TotalPnL_Pct','DayPnL_INR','DayPnL_Pct','RealisedPnL_INR','Status'].join(',')];
-  let idx=1;
-  _brokerData.positions.forEach(p=>{
-    if(p.quantity===0&&(p.product==='CNC'||p.product==='NRML'))return;
-    const qty=p.quantity||0,avg=p.average_price||0,cmp=p.last_price||0;
-    const inv=Math.abs(avg*qty),cur=Math.abs(cmp*qty),pnl=p.pnl||0;
-    const pnlPct=inv>0?(pnl/inv*100):0,dayPnl=p.day_m2m||0,dayPct=inv>0?(dayPnl/inv*100):0;
-    const type=p.product==='CNC'||p.product==='NRML'?'DELIVERY':'INTRADAY';
-    rows.push([idx++,p.tradingsymbol,type,p.product,qty,avg.toFixed(2),cmp.toFixed(2),Math.round(inv),Math.round(cur),Math.round(pnl),pnlPct.toFixed(2),Math.round(dayPnl),dayPct.toFixed(2),Math.round(p.realised||0),qty>0?'LONG':qty<0?'SHORT':'CLOSED'].join(','));
+  const tb=document.getElementById('brkAllPosBody');
+  if(!tb||!tb.querySelector('tr[style]')){toast('No closed trades to export','err');return}
+  const rows=[['Symbol','Type','Qty','BuyAvg','BuyValue','SellAvg','SellValue','RealisedPnL','PnL%','Time']];
+  tb.querySelectorAll('tr').forEach(tr=>{
+    const tds=[...tr.querySelectorAll('td')];if(tds.length<10)return;
+    const sym   =tds[0].querySelector('div')?.textContent.trim()||'';
+    const type  =tds[1].textContent.trim().replace(/[📦⚡ ]/g,'');
+    const qty   =tds[2].textContent.trim();
+    const buyAvg=tds[3].textContent.replace('₹','').replace(/,/g,'').replace('—','').trim();
+    const buyVal=tds[4].textContent.replace('₹','').replace(/,/g,'').replace('—','').trim();
+    const salAvg=tds[5].textContent.replace('₹','').replace(/,/g,'').trim();
+    const salVal=tds[6].textContent.replace('₹','').replace(/,/g,'').trim();
+    const pnlEl =tds[7].querySelector('.pnl-amt');
+    const pctEl =tds[7].querySelector('.pnl-pct');
+    const pnl   =pnlEl?pnlEl.textContent.replace('₹','').replace(/,/g,'').trim():'';
+    const pct   =pctEl?pctEl.textContent.trim():'';
+    const time  =tds[9].textContent.trim();
+    if(sym)rows.push([sym,type,qty,buyAvg,buyVal,salAvg,salVal,pnl,pct,time]);
   });
-  _brokerData.holdings.forEach(h=>{
-    const qty=h.quantity||0;if(qty===0)return;
-    const avg=h.average_price||0,cmp=h.last_price||0;
-    const inv=avg*qty,cur=cmp*qty,pnl=h.pnl||0;
-    const pnlPct=inv>0?(pnl/inv*100):0;
-    const dayPnl=(h.day_change||0)*qty,dayPct=h.day_change_percentage||0;
-    const posMatch=_brokerData.positions.find(pos=>pos.tradingsymbol===h.tradingsymbol&&pos.product==='CNC');
-    const realised=posMatch?(posMatch.realised||0):0;
-    rows.push([idx++,h.tradingsymbol,'HOLDING','CNC',qty,avg.toFixed(2),cmp.toFixed(2),Math.round(inv),Math.round(cur),Math.round(pnl),pnlPct.toFixed(2),Math.round(dayPnl),dayPct.toFixed(2),Math.round(realised),'HOLDING'].join(','));
-  });
-  const blob=new Blob([rows.join('\n')],{type:'text/csv'});
+  const blob=new Blob([rows.map(r=>r.join(',')).join('\n')],{type:'text/csv'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=`nandi_all_positions_${new Date().toISOString().slice(0,10)}.csv`;a.click();
-  toast('All positions exported','ok');
+  a.download=`nandi_realised_pnl_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();toast('Realised P&L exported','ok');
 }
 
 function exitBrokerPosition(sym,direction,cmp,qty,product){
