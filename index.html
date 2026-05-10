@@ -1160,6 +1160,7 @@ const PF_KEY=SCHEMA+'_pf';
 const PF_ARCH_KEY=SCHEMA+'_pf_arch';
 const EARN_KEY=SCHEMA+'_earn';
 const ORDER_LOG_KEY=SCHEMA+'_order_log';
+const PNL_HIST_KEY=SCHEMA+'_pnl_hist';
 
 const HMA_FAST=9,HMA_SLOW=10;
 const SMI_K=10,SMI_D=3,SMI_SM=3;
@@ -1196,6 +1197,7 @@ let cascadeMap={},cascadeCurrent=[];
 let dailyPortfolios=[],dpfArchive=[];
 let regimeTransitions=[];
 let sessionCount=0;
+let pnlHistory=[];
 let sigSortCol='score',sigSortDir=-1;
 let tpslSortCol='trades',tpslSortDir=-1;
 let top25SortBuy='score',top25SortSell='score';
@@ -2424,6 +2426,13 @@ async function zdCancelOrder(orderId){
 let orderLog=[];
 function saveOrderLog(){idbSet(ORDER_LOG_KEY,orderLog);try{localStorage.setItem(ORDER_LOG_KEY,JSON.stringify(orderLog.slice(-100)))}catch(e){}}
 function loadOrderLog(){try{const ls=localStorage.getItem(ORDER_LOG_KEY);if(ls)orderLog=JSON.parse(ls)}catch(e){orderLog=[]}idbGet(ORDER_LOG_KEY).then(d=>{if(d&&Array.isArray(d)&&d.length>=orderLog.length){orderLog=d;renderOrderLog()}})}
+
+// ── P&L History store — persists Zerodha trade entries across sessions ──
+function savePnlHistory(){idbSet(PNL_HIST_KEY,pnlHistory);try{localStorage.setItem(PNL_HIST_KEY,JSON.stringify(pnlHistory.slice(-2000)))}catch(e){}}
+function loadPnlHistory(){
+  try{const ls=localStorage.getItem(PNL_HIST_KEY);if(ls)pnlHistory=JSON.parse(ls)}catch(e){pnlHistory=[]}
+  idbGet(PNL_HIST_KEY).then(d=>{if(d&&Array.isArray(d)&&d.length>=pnlHistory.length){pnlHistory=d;zdLog('P&L history loaded: '+pnlHistory.length+' entries')}})
+}
 function logOrder(sym,direction,orderType,qty,entryPrice,tpPrice,slPrice,orderId,gttId){const rec={id:Date.now(),date:new Date().toISOString().slice(0,10),time:new Date().toLocaleTimeString('en-IN'),symbol:sym,direction,orderType,qty,entry_price:entryPrice,tp_price:tpPrice||null,sl_price:slPrice||null,order_id:orderId,gtt_id:gttId||null,exit_price:null,exit_date:null,pnl_pct:null,pnl_amt:null,status:'OPEN'};orderLog.unshift(rec);if(orderLog.length>500)orderLog=orderLog.slice(0,500);saveOrderLog();renderOrderLog();return rec.id}
 function updateOrderExit(logId,exitPrice,status){const rec=orderLog.find(r=>r.id===logId);if(!rec)return;rec.exit_price=exitPrice;rec.exit_date=new Date().toISOString().slice(0,10);rec.status=status||'EXITED';const entryPx=rec.entry_price||0;if(entryPx>0){const rawPct=(rec.direction==='BUY'?(exitPrice-entryPx)/entryPx:(entryPx-exitPrice)/entryPx)*100;rec.pnl_pct=parseFloat(rawPct.toFixed(2));rec.pnl_amt=parseFloat(((exitPrice-entryPx)*(rec.direction==='BUY'?1:-1)*rec.qty).toFixed(0))}saveOrderLog();renderOrderLog()}
 function renderOrderLog(){
@@ -2443,7 +2452,7 @@ function exportOrderLog(){if(!orderLog.length){toast('No orders to export','err'
 // ═══════════════════════════════════════════════════════════
 // BROKER PAGE
 // ═══════════════════════════════════════════════════════════
-let _brokerData={orders:[],positions:[],holdings:[],gtt:[]};
+let _brokerData={orders:[],positions:[],allPositions:[],holdings:[],gtt:[]};
 function switchBrokerTab(name){
   document.querySelectorAll('.brk-panel').forEach(p=>p.style.display='none');
   document.querySelectorAll('[id^=brkTab-]').forEach(b=>{b.className='btn btn-d';b.style.fontSize='9px'});
@@ -2462,6 +2471,7 @@ async function brokerRefreshAll(){
   if(!zdLiveMode){toast('Connect Zerodha Kite first','err');return}
   const strip=document.getElementById('brokerLastSync');if(strip)strip.textContent='Syncing…';
   await Promise.allSettled([fetchBrokerOrders(),fetchBrokerPositions(),fetchBrokerHoldings(),fetchBrokerGTT()]);
+  persistTodayTrades();
   renderBrokerSummary();
   // If all-positions tab is active, refresh it too
   if(document.getElementById('brk-allpos').style.display!=='none')renderAllPositions();
@@ -2469,9 +2479,49 @@ async function brokerRefreshAll(){
 }
 async function kiteGet(path){const res=await fetch(`${ZD_WORKER}${path}`,{headers:{'X-Kite-Version':'3','Authorization':`token ${zdApiKey}:${zdToken}`}});return res.json()}
 async function fetchBrokerOrders(){try{const j=await kiteGet('/kite/orders');if(j.status==='success'){_brokerData.orders=(j.data||[]).reverse();renderBrokerOrders()}else toast('Orders: '+j.message,'err')}catch(e){toast('Orders fetch error','err')}}
-async function fetchBrokerPositions(){try{const j=await kiteGet('/kite/portfolio/positions');if(j.status==='success'){const all=[...(j.data?.net||[]),...(j.data?.day||[])];const seen=new Set();_brokerData.positions=all.filter(p=>{const k=p.tradingsymbol+'|'+p.product;if(seen.has(k))return false;seen.add(k);return true}).filter(p=>p.quantity!==0);renderBrokerPositions()}else toast('Positions: '+j.message,'err')}catch(e){toast('Positions fetch error','err')}}
+async function fetchBrokerPositions(){try{const j=await kiteGet('/kite/portfolio/positions');if(j.status==='success'){const net=j.data?.net||[];const day=j.data?.day||[];// Store ALL positions (including qty=0 squared-off) for P&L — key fix for All Positions tab
+const allSeen=new Set();_brokerData.allPositions=[...net,...day].filter(p=>{const k=p.tradingsymbol+'|'+p.product+'|'+(p.product==='MIS'?'day':'net');if(allSeen.has(k))return false;allSeen.add(k);return true});// Open positions only (qty!=0) for the Positions display tab
+_brokerData.positions=_brokerData.allPositions.filter(p=>p.quantity!==0);renderBrokerPositions()}else toast('Positions: '+j.message,'err')}catch(e){toast('Positions fetch error','err')}}
 async function fetchBrokerHoldings(){try{const j=await kiteGet('/kite/portfolio/holdings');if(j.status==='success'){_brokerData.holdings=j.data||[];renderBrokerHoldings()}else toast('Holdings: '+j.message,'err')}catch(e){toast('Holdings fetch error','err')}}
 async function fetchBrokerGTT(){try{const j=await kiteGet('/kite/gtt/triggers');if(j.status==='success'){_brokerData.gtt=j.data||[];renderBrokerGTT()}else toast('GTT: '+j.message,'err')}catch(e){toast('GTT fetch error','err')}}
+
+// ── Persist today's Zerodha trades into IDB so they survive across sessions ──
+// Called after every brokerRefreshAll(). Entries accumulate day by day.
+function persistTodayTrades(){
+  const today=new Date().toISOString().slice(0,10);
+  const newEntries=[];
+
+  // Source 1: allPositions sell_quantity/buy_quantity (covers MIS squared-off + CNC partial sells)
+  (_brokerData.allPositions||[]).forEach(p=>{
+    if((p.sell_quantity||0)>0){
+      newEntries.push({date:today,sym:p.tradingsymbol,dir:'SELL',qty:p.sell_quantity,price:p.sell_price||0,product:p.product||'CNC',time:'—',source:'kite_pos'});
+    }
+    if((p.buy_quantity||0)>0){
+      newEntries.push({date:today,sym:p.tradingsymbol,dir:'BUY',qty:p.buy_quantity,price:p.buy_price||0,product:p.product||'CNC',time:'—',source:'kite_pos'});
+    }
+  });
+
+  // Source 2: completed orders (gives time + individual order detail)
+  (_brokerData.orders||[]).forEach(o=>{
+    if(o.status!=='COMPLETE')return;
+    const oDate=o.order_timestamp?o.order_timestamp.slice(0,10):today;
+    const timeStr=o.order_timestamp?new Date(o.order_timestamp).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}):'—';
+    newEntries.push({date:oDate,sym:o.tradingsymbol,dir:o.transaction_type==='BUY'?'BUY':'SELL',qty:o.quantity||0,price:o.average_price||o.price||0,product:o.product||'CNC',time:timeStr,source:'broker'});
+  });
+
+  // Merge into pnlHistory — deduplicate by sym+date+dir+product+price (rounded to avoid float drift)
+  let added=0;
+  newEntries.forEach(e=>{
+    const key=`${e.sym}|${e.date}|${e.dir}|${e.product}|${Math.round(e.price*100)}`;
+    const exists=pnlHistory.find(h=>`${h.sym}|${h.date}|${h.dir}|${h.product}|${Math.round(h.price*100)}`===key);
+    if(!exists){pnlHistory.push(e);added++;}
+  });
+
+  // Prune to ~2 FY of data (keep latest 10000 entries)
+  if(pnlHistory.length>10000)pnlHistory=pnlHistory.slice(-10000);
+
+  if(added>0){savePnlHistory();zdLog(`P&L history: +${added} new entries saved (total ${pnlHistory.length})`)}
+}
 
 function renderBrokerSummary(){
   const strip=document.getElementById('brokerSummaryStrip');if(!strip)return;
@@ -2482,8 +2532,8 @@ function renderBrokerSummary(){
   const totalPosDayPnl=pos.reduce((s,p)=>s+(p.day_m2m||0),0);
   const totalHldDayPnl=hld.reduce((s,h)=>s+((h.day_change||0)*(h.quantity||0)),0);
   const totalDayPnl=totalPosDayPnl+totalHldDayPnl;
-  // Realised P&L from positions (booked today)
-  const totalRealised=pos.reduce((s,p)=>s+(p.realised||0),0);
+  // Realised P&L from ALL positions (including squared-off qty=0 — fixed)
+  const totalRealised=(_brokerData.allPositions.length?_brokerData.allPositions:pos).reduce((s,p)=>s+(p.realised||0),0);
   const openOrders=ord.filter(o=>o.status==='OPEN'||o.status==='TRIGGER PENDING').length;
   const invested=hld.reduce((s,h)=>s+((h.average_price||0)*(h.quantity||0)),0);
   const current=hld.reduce((s,h)=>s+((h.last_price||0)*(h.quantity||0)),0);
@@ -2712,6 +2762,20 @@ function buildRows(fromDate, toDate){
     }
   });
 
+  // A2) IDB/localStorage P&L history — persisted Zerodha trades from previous sessions
+  // This is what makes historical weeks/months visible without re-fetching from Zerodha
+  (pnlHistory||[]).forEach(e=>{
+    if(!e.date||!e.sym)return;
+    if(e.date<fromDate||e.date>toDate)return;
+    // Skip if already present from NANDI orderLog (nandi/nandi_exit sources win)
+    const alreadyNandi=allEntries.find(a=>a.sym===e.sym&&a.date===e.date&&a.dir===e.dir&&(a.source==='nandi'||a.source==='nandi_exit'));
+    if(alreadyNandi)return;
+    // For today specifically, live data (Sections B/C) takes precedence — skip hist entries
+    const today2=new Date().toISOString().slice(0,10);
+    if(e.date===today2)return;
+    allEntries.push(e);
+  });
+
   // B) Today's broker orders (Zerodha API) — supplement for trades not in NANDI log
   const today = new Date().toISOString().slice(0,10);
   if(fromDate<=today && toDate>=today){
@@ -2735,6 +2799,24 @@ function buildRows(fromDate, toDate){
         product:o.product||'CNC',
         time:timeStr, source:'broker'
       });
+    });
+  }
+
+  // C) Positions data — covers MIS squared-off intraday + CNC partial sells (sell_quantity/buy_quantity from Kite positions)
+  // This is the key source when trades were placed directly on Zerodha (not via NANDI order modal)
+  if(fromDate<=today&&toDate>=today){
+    (_brokerData.allPositions||[]).forEach(p=>{
+      if((p.sell_quantity||0)<=0)return;
+      // Skip if already covered by NANDI log or broker orders (avoid double-count)
+      const alreadySell=allEntries.find(e=>e.sym===p.tradingsymbol&&e.date===today&&e.dir==='SELL'&&(e.source==='nandi'||e.source==='broker'));
+      if(alreadySell)return;
+      // Sell entry from position's sell_quantity / sell_price
+      allEntries.push({date:today,sym:p.tradingsymbol,dir:'SELL',qty:p.sell_quantity,price:p.sell_price||0,product:p.product||'CNC',time:'—',source:'kite_pos'});
+      // For MIS (intraday squared-off): also add the matching buy entry
+      if(p.product==='MIS'&&(p.buy_quantity||0)>0){
+        const alreadyBuy=allEntries.find(e=>e.sym===p.tradingsymbol&&e.date===today&&e.dir==='BUY'&&(e.source==='nandi'||e.source==='broker'));
+        if(!alreadyBuy)allEntries.push({date:today,sym:p.tradingsymbol,dir:'BUY',qty:p.buy_quantity,price:p.buy_price||0,product:p.product,time:'—',source:'kite_pos'});
+      }
     });
   }
 
@@ -2771,14 +2853,15 @@ function buildRows(fromDate, toDate){
       // Round-trip: intraday or delivery bought & sold same period
       pnl = sellValue - (matchedQty*buyAvg);
     } else {
-      // Delivery exit — bought on a previous day, cost from holdings
+      // Delivery exit — bought on a previous day, cost from holdings or allPositions
       const hld = (_brokerData.holdings||[]).find(h=>h.tradingsymbol===g.sym);
-      const pos = (_brokerData.positions||[]).find(p=>p.tradingsymbol===g.sym&&p.product==='CNC');
+      const pos = (_brokerData.allPositions||_brokerData.positions||[]).find(p=>p.tradingsymbol===g.sym&&p.product==='CNC');
       entryAvg = hld?hld.average_price:(pos?pos.average_price:0);
       if(entryAvg>0){
         pnl = sellValue-(entryAvg*totalSellQty);
-      } else if(pos&&pos.realised){
-        pnl = pos.realised;
+      } else if(pos&&(pos.realised||pos.pnl)){
+        // Fallback: use Kite's own realised P&L calculation (most accurate for CNC exits)
+        pnl = pos.realised||pos.pnl||0;
         entryAvg = pos.average_price||0;
       }
     }
@@ -3535,7 +3618,7 @@ function checkAutoExport(){if(_autoExportDone)return;const now=new Date(),h=now.
   if(localStorage.getItem('n8_theme')==='dark'){document.body.classList.add('dark');const btn=document.getElementById('themeBtn');if(btn)btn.innerHTML='<i class="fas fa-sun"></i>'}
   const k=sessionStorage.getItem('zd_n8_key'),t=sessionStorage.getItem('zd_n8_tok');
   if(k&&t){document.getElementById('zdKey').value=k;document.getElementById('zdTok').value=t}
-  loadWeights();loadTpsl();loadSeqWR();loadIndPref();pfLoad();loadOrderLog();
+  loadWeights();loadTpsl();loadSeqWR();loadIndPref();pfLoad();loadOrderLog();loadPnlHistory();
   const meta=loadMeta();sessionCount=meta.sessions||0;updatePills();
   if(dailyPortfolios.length||dpfArchive.length)renderPage2();
   loadLedgerAsync().then(ledger=>{
