@@ -2643,6 +2643,9 @@ function setApView(v){
 // ── Date range ──
 function setApRange(key){
   _apRange=key; _apSelDay='';
+  // Always hide selected-day banner when changing range
+  const banner=document.getElementById('apSelectedDayBanner');
+  if(banner)banner.style.display='none';
   document.querySelectorAll('.ap-range-btn').forEach(b=>{
     b.classList.toggle('active-range', b.dataset.range===key);
   });
@@ -2675,88 +2678,129 @@ function applyCustomRange(){
   renderAllPositions();
 }
 
-// ── Core: build rows from completed orders ──
-// Simple logic: for each symbol, sum all BUY qty/value and SELL qty/value
-// Difference = net qty remaining. P&L = sell_value - (matched_qty × buy_avg)
+// ── Core: build rows for a date range ──
+// PRIMARY source: orderLog (persisted in IDB — all historical NANDI trades)
+// SECONDARY: _brokerData.orders (today's live Zerodha orders only)
+// Groups by symbol+date, shows buy side / sell side / net qty / P&L
 function buildRows(fromDate, toDate){
-  const rows=[];
-  const orders=_brokerData.orders||[];
-  // Only COMPLETE orders in date range
-  // Zerodha order_timestamp format: "2026-05-09 09:15:23"
-  const completed=orders.filter(o=>{
-    if(o.status!=='COMPLETE')return false;
-    const oDate=o.order_timestamp?o.order_timestamp.slice(0,10):'';
-    return oDate>=fromDate && oDate<=toDate;
+  const rows = [];
+
+  // ── STEP 1: Collect all raw order entries from both sources ──
+  const allEntries = []; // {date, sym, dir, qty, price, product, time, source}
+
+  // A) NANDI orderLog — persisted, all history
+  (orderLog||[]).forEach(o=>{
+    if(!o.date||!o.symbol)return;
+    if(o.date<fromDate||o.date>toDate)return;
+    // Use exit_price for SELL entries that were marked exited
+    const price = o.entry_price||0;
+    allEntries.push({
+      date:o.date, sym:o.symbol,
+      dir:o.direction==='BUY'?'BUY':'SELL',
+      qty:o.qty||0, price, product:o.orderType||'CNC',
+      time:o.time||'—', source:'nandi'
+    });
+    // If this order has an exit recorded (entry in orderLog can have exit_price)
+    if(o.exit_price&&o.exit_date&&o.exit_date>=fromDate&&o.exit_date<=toDate){
+      const exitDir = o.direction==='BUY'?'SELL':'BUY';
+      allEntries.push({
+        date:o.exit_date, sym:o.symbol,
+        dir:exitDir,
+        qty:o.qty||0, price:o.exit_price, product:o.orderType||'CNC',
+        time:o.time||'—', source:'nandi_exit'
+      });
+    }
   });
 
-  // Group by symbol
-  const bySymbol={};
-  completed.forEach(o=>{
-    const s=o.tradingsymbol;
-    if(!bySymbol[s])bySymbol[s]={buys:[],sells:[],product:o.product,date:o.order_timestamp?o.order_timestamp.slice(0,10):fromDate};
-    if(o.transaction_type==='BUY')bySymbol[s].buys.push(o);
-    else if(o.transaction_type==='SELL')bySymbol[s].sells.push(o);
-    // Track latest date
-    const oDate=o.order_timestamp?o.order_timestamp.slice(0,10):'';
-    if(oDate>bySymbol[s].date)bySymbol[s].date=oDate;
+  // B) Today's broker orders (Zerodha API) — supplement for trades not in NANDI log
+  const today = new Date().toISOString().slice(0,10);
+  if(fromDate<=today && toDate>=today){
+    (_brokerData.orders||[]).forEach(o=>{
+      if(o.status!=='COMPLETE')return;
+      const oDate = o.order_timestamp?o.order_timestamp.slice(0,10):today;
+      if(oDate<fromDate||oDate>toDate)return;
+      // Skip if already in NANDI log (same symbol+date+dir to avoid double-count)
+      const already = allEntries.find(e=>
+        e.sym===o.tradingsymbol&&e.date===oDate&&
+        e.dir===o.transaction_type&&e.source==='nandi'
+      );
+      if(already)return;
+      const timeStr = o.order_timestamp?
+        new Date(o.order_timestamp).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}):'—';
+      allEntries.push({
+        date:oDate, sym:o.tradingsymbol,
+        dir:o.transaction_type==='BUY'?'BUY':'SELL',
+        qty:o.quantity||0,
+        price:o.average_price||o.price||0,
+        product:o.product||'CNC',
+        time:timeStr, source:'broker'
+      });
+    });
+  }
+
+  if(!allEntries.length)return [];
+
+  // ── STEP 2: Group by symbol+date ──
+  const groups = {};
+  allEntries.forEach(e=>{
+    const k = e.sym+'|'+e.date;
+    if(!groups[k])groups[k]={sym:e.sym,date:e.date,product:e.product,buys:[],sells:[]};
+    if(e.dir==='BUY') groups[k].buys.push(e);
+    else              groups[k].sells.push(e);
   });
 
-  Object.keys(bySymbol).forEach(sym=>{
-    const g=bySymbol[sym];
+  // ── STEP 3: Build one row per group that has sells ──
+  Object.values(groups).forEach(g=>{
+    // Skip if no sells — pure open buy position
+    if(!g.sells.length)return;
 
-    // BUY side totals
-    const totalBuyQty =g.buys.reduce((s,o)=>s+(o.quantity||0),0);
-    const buyValue    =g.buys.reduce((s,o)=>s+(o.average_price||o.price||0)*(o.quantity||0),0);
-    const buyAvg      =totalBuyQty>0?buyValue/totalBuyQty:0;
+    const totalBuyQty  = g.buys.reduce((s,e)=>s+e.qty,0);
+    const buyValue     = g.buys.reduce((s,e)=>s+e.price*e.qty,0);
+    const buyAvg       = totalBuyQty>0?buyValue/totalBuyQty:0;
 
-    // SELL side totals
-    const totalSellQty=g.sells.reduce((s,o)=>s+(o.quantity||0),0);
-    const sellValue   =g.sells.reduce((s,o)=>s+(o.average_price||o.price||0)*(o.quantity||0),0);
-    const sellAvg     =totalSellQty>0?sellValue/totalSellQty:0;
+    const totalSellQty = g.sells.reduce((s,e)=>s+e.qty,0);
+    const sellValue    = g.sells.reduce((s,e)=>s+e.price*e.qty,0);
+    const sellAvg      = totalSellQty>0?sellValue/totalSellQty:0;
 
-    // If no sells at all — pure open buy, skip (not a closed trade)
-    if(totalSellQty===0)return;
+    const netQty       = totalBuyQty - totalSellQty;
+    const matchedQty   = Math.min(totalBuyQty,totalSellQty)||totalSellQty;
 
-    // Net qty remaining after sells
-    const netQty=totalBuyQty-totalSellQty;
-
-    // Matched qty (the portion that was actually closed)
-    const matchedQty=Math.min(totalBuyQty,totalSellQty)||totalSellQty;
-
-    // P&L calculation:
-    // If we have buys: P&L = sell_value - cost_of_matched_qty
-    // If delivery sell (no buy today): use holdings avg price as cost
+    // P&L
     let pnl=0, entryAvg=buyAvg;
     if(totalBuyQty>0){
-      // Intraday or partial delivery exit bought today
-      const costOfSold=matchedQty*buyAvg;
-      pnl=sellValue-costOfSold;
+      // Round-trip: intraday or delivery bought & sold same period
+      pnl = sellValue - (matchedQty*buyAvg);
     } else {
-      // Delivery exit — no buy today, cost from holdings
-      const hld=(_brokerData.holdings||[]).find(h=>h.tradingsymbol===sym);
-      const pos=(_brokerData.positions||[]).find(p=>p.tradingsymbol===sym&&p.product==='CNC');
-      entryAvg=hld?hld.average_price:(pos?pos.average_price:0);
+      // Delivery exit — bought on a previous day, cost from holdings
+      const hld = (_brokerData.holdings||[]).find(h=>h.tradingsymbol===g.sym);
+      const pos = (_brokerData.positions||[]).find(p=>p.tradingsymbol===g.sym&&p.product==='CNC');
+      entryAvg = hld?hld.average_price:(pos?pos.average_price:0);
       if(entryAvg>0){
-        pnl=sellValue-(entryAvg*totalSellQty);
-      } else if(pos){
-        pnl=pos.realised||0;
+        pnl = sellValue-(entryAvg*totalSellQty);
+      } else if(pos&&pos.realised){
+        pnl = pos.realised;
+        entryAvg = pos.average_price||0;
       }
     }
 
     const investedSold = matchedQty*(entryAvg||buyAvg||0);
-    const pnlPct = investedSold>0?(pnl/investedSold*100):0;
-    const isDelivery=g.product==='CNC'||g.product==='NRML';
-    const latestTime=g.sells.length?
-      g.sells.reduce((a,b)=>(a.order_timestamp||'')>(b.order_timestamp||'')?a:b).order_timestamp
-      :'';
-    const timeStr=latestTime?new Date(latestTime).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}):'—';
+    const pnlPct       = investedSold>0?(pnl/investedSold*100):0;
+    const isDelivery   = g.product==='CNC'||g.product==='NRML'||g.product==='LIMIT';
+    const latestTime   = g.sells.reduce((a,b)=>a.time>b.time?a:b).time;
 
     rows.push({
-      sym, date:g.date, product:g.product, isDelivery,
-      buyQty:totalBuyQty, buyAvg:parseFloat(buyAvg.toFixed(2)), buyValue:parseFloat(buyValue.toFixed(2)),
-      sellQty:totalSellQty, sellAvg:parseFloat(sellAvg.toFixed(2)), sellValue:parseFloat(sellValue.toFixed(2)),
-      netQty, matchedQty, pnl:parseFloat(pnl.toFixed(2)), pnlPct:parseFloat(pnlPct.toFixed(2)),
-      turnover:buyValue+sellValue, time:timeStr,
+      sym:g.sym, date:g.date, product:g.product, isDelivery,
+      buyQty:totalBuyQty,
+      buyAvg:parseFloat(buyAvg.toFixed(2)),
+      buyValue:parseFloat(buyValue.toFixed(2)),
+      sellQty:totalSellQty,
+      sellAvg:parseFloat(sellAvg.toFixed(2)),
+      sellValue:parseFloat(sellValue.toFixed(2)),
+      netQty, matchedQty,
+      pnl:parseFloat(pnl.toFixed(2)),
+      pnlPct:parseFloat(pnlPct.toFixed(2)),
+      turnover:buyValue+sellValue,
+      time:latestTime,
       entryAvg:parseFloat((entryAvg||buyAvg||0).toFixed(2))
     });
   });
