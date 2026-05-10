@@ -1109,16 +1109,17 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
         <table id="brkAllPosTbl" style="font-size:10px">
           <thead>
             <tr>
-              <th style="min-width:110px;position:sticky;left:0;background:var(--bg3);z-index:2">Symbol</th>
+              <th style="min-width:120px;position:sticky;left:0;background:var(--bg3);z-index:2">Symbol · Date · Time</th>
               <th style="text-align:center">Type</th>
-              <th style="text-align:right">Qty</th>
-              <th style="text-align:right">Buy Avg ₹</th>
+              <th style="text-align:right">Buy Qty</th>
+              <th style="text-align:right">Entry Avg ₹</th>
               <th style="text-align:right">Buy Value ₹</th>
+              <th style="text-align:right">Sell Qty</th>
               <th style="text-align:right">Sell Avg ₹</th>
               <th style="text-align:right">Sell Value ₹</th>
-              <th style="text-align:right;color:var(--amber);font-weight:900">Realised P&amp;L ₹</th>
-              <th style="text-align:right">P&amp;L %</th>
-              <th style="text-align:center">Date</th>
+              <th style="text-align:center">Net Qty</th>
+              <th style="text-align:right;color:var(--amber);font-weight:900">P&amp;L ₹ / %</th>
+              <th style="text-align:right">Running ₹</th>
               <th style="text-align:center">Re-enter</th>
             </tr>
           </thead>
@@ -2615,24 +2616,22 @@ async function deleteGTT(gttId){if(!confirm(`Delete GTT #${gttId}?`))return;try{
 // FIX 2: ALL POSITIONS P&L TAB — Delivery + Intraday + Holdings
 // ═══════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════
-// REALISED P&L — CALENDAR + DATE RANGE ENGINE
 // ═══════════════════════════════════════════════════════════
 
-// ── State ──
-let _apView        = 'calendar';   // 'calendar' | 'list'
-let _apRange       = 'today';      // current range key
-let _apFromDate    = '';           // YYYY-MM-DD
-let _apToDate      = '';           // YYYY-MM-DD
-let _apCalYear     = 0;            // currently displayed calendar year
-let _apCalMonth    = 0;            // currently displayed calendar month (0-11)
-let _apSelectedDay = '';           // YYYY-MM-DD or '' for all
-let _apDayPnlCache = {};           // { 'YYYY-MM-DD': {pnl, trades, wins, losses} }
+let _apView     = 'calendar';
+let _apRange    = 'today';
+let _apFromDate = '';
+let _apToDate   = '';
+let _apCalYear  = 0;
+let _apCalMonth = 0;
+let _apSelDay   = '';
+let _apDayCache = {}; // {date: {pnl, trades}}
 
 // ── View toggle ──
 function setApView(v){
   _apView=v;
-  document.getElementById('apCalendarView').style.display  = v==='calendar'?'block':'none';
-  document.getElementById('apListView').style.display      = v==='list'?'block':'none';
+  document.getElementById('apCalendarView').style.display = v==='calendar'?'block':'none';
+  document.getElementById('apListView').style.display     = v==='list'?'block':'none';
   document.getElementById('apViewCal').className  = v==='calendar'?'btn btn-a':'btn btn-d';
   document.getElementById('apViewList').className = v==='list'?'btn btn-a':'btn btn-d';
   document.getElementById('apViewCal').style.fontSize='9px';
@@ -2641,51 +2640,27 @@ function setApView(v){
   else renderTradesList();
 }
 
-// ── Date range helpers ──
-function apDateRange(key){
-  const now=new Date(), y=now.getFullYear(), m=now.getMonth(), d=now.getDate();
-  const fmt=dt=>dt.toISOString().slice(0,10);
-  if(key==='today')  return{from:fmt(now),to:fmt(now)};
-  if(key==='week'){
-    const mon=new Date(now); mon.setDate(d-((now.getDay()+6)%7));
-    return{from:fmt(mon),to:fmt(now)};
-  }
-  if(key==='month')  return{from:`${y}-${String(m+1).padStart(2,'0')}-01`,to:fmt(now)};
-  if(key==='3month'){
-    const f=new Date(now); f.setMonth(m-2); f.setDate(1);
-    return{from:fmt(f),to:fmt(now)};
-  }
-  if(key==='6month'){
-    const f=new Date(now); f.setMonth(m-5); f.setDate(1);
-    return{from:fmt(f),to:fmt(now)};
-  }
-  if(key==='year'){
-    // Indian FY: April 1 to March 31
-    const fyStart = m>=3 ? `${y}-04-01` : `${y-1}-04-01`;
-    return{from:fyStart,to:fmt(now)};
-  }
-  return{from:fmt(now),to:fmt(now)};
-}
-
+// ── Date range ──
 function setApRange(key){
-  _apRange=key;
-  _apSelectedDay='';
+  _apRange=key; _apSelDay='';
   document.querySelectorAll('.ap-range-btn').forEach(b=>{
     b.classList.toggle('active-range', b.dataset.range===key);
   });
-  const customEl=document.getElementById('apCustomRange');
-  if(key==='custom'){
-    customEl.style.display='flex';
-    return; // wait for date inputs
-  }
-  customEl.style.display='none';
-  const{from,to}=apDateRange(key);
+  const cust=document.getElementById('apCustomRange');
+  if(key==='custom'){if(cust)cust.style.display='flex';return;}
+  if(cust)cust.style.display='none';
+  const now=new Date(),y=now.getFullYear(),m=now.getMonth(),d=now.getDate();
+  const fmt=dt=>dt.toISOString().slice(0,10);
+  let from=fmt(now), to=fmt(now);
+  if(key==='week'){const mon=new Date(now);mon.setDate(d-((now.getDay()+6)%7));from=fmt(mon);}
+  else if(key==='month'){from=`${y}-${String(m+1).padStart(2,'0')}-01`;}
+  else if(key==='3month'){const f=new Date(now);f.setMonth(m-2);f.setDate(1);from=fmt(f);}
+  else if(key==='6month'){const f=new Date(now);f.setMonth(m-5);f.setDate(1);from=fmt(f);}
+  else if(key==='year'){from=m>=3?`${y}-04-01`:`${y-1}-04-01`;}
   _apFromDate=from; _apToDate=to;
+  const dt=new Date(to);_apCalYear=dt.getFullYear();_apCalMonth=dt.getMonth();
   const lbl=document.getElementById('apDateLabel');
-  if(lbl) lbl.textContent=from===to?from:`${from} → ${to}`;
-  // Set calendar to show the end month
-  const dt=new Date(to);
-  _apCalYear=dt.getFullYear(); _apCalMonth=dt.getMonth();
+  if(lbl)lbl.textContent=from===to?from:`${from} → ${to}`;
   renderAllPositions();
 }
 
@@ -2693,356 +2668,310 @@ function applyCustomRange(){
   const f=document.getElementById('apFromDate').value;
   const t=document.getElementById('apToDate').value;
   if(!f||!t)return;
-  _apFromDate=f; _apToDate=t;
-  _apSelectedDay='';
+  _apFromDate=f;_apToDate=t;_apSelDay='';
   const lbl=document.getElementById('apDateLabel');
   if(lbl)lbl.textContent=`${f} → ${t}`;
-  const dt=new Date(t);
-  _apCalYear=dt.getFullYear(); _apCalMonth=dt.getMonth();
+  const dt=new Date(t);_apCalYear=dt.getFullYear();_apCalMonth=dt.getMonth();
   renderAllPositions();
 }
 
-// ── Core: build trade rows from orders for a date range ──
-function buildTradeRows(fromDate, toDate){
-  const orders=_brokerData.orders||[];
-  const nandilogs=orderLog||[];
-
-  // Use NANDI order log as primary source (has entry+exit matched)
-  // Fall back to broker orders for same-day round trips
+// ── Core: build rows from completed orders ──
+// Simple logic: for each symbol, sum all BUY qty/value and SELL qty/value
+// Difference = net qty remaining. P&L = sell_value - (matched_qty × buy_avg)
+function buildRows(fromDate, toDate){
   const rows=[];
-
-  // ── From NANDI order log (all time — persisted in IDB) ──
-  // Group by symbol+date, match BUY→SELL pairs
-  const logBySymDate={};
-  nandilogs.forEach(r=>{
-    if(!r.date)return;
-    if(r.date<fromDate||r.date>toDate)return;
-    const k=r.symbol+'|'+r.date;
-    if(!logBySymDate[k])logBySymDate[k]={buys:[],sells:[],date:r.date,sym:r.symbol,product:r.orderType||'CNC'};
-    if(r.direction==='BUY')logBySymDate[k].buys.push(r);
-    else logBySymDate[k].sells.push(r);
+  const orders=_brokerData.orders||[];
+  // Only COMPLETE orders in date range
+  // Zerodha order_timestamp format: "2026-05-09 09:15:23"
+  const completed=orders.filter(o=>{
+    if(o.status!=='COMPLETE')return false;
+    const oDate=o.order_timestamp?o.order_timestamp.slice(0,10):'';
+    return oDate>=fromDate && oDate<=toDate;
   });
 
-  Object.values(logBySymDate).forEach(g=>{
-    const hasSells=g.sells.length>0,hasBuys=g.buys.length>0;
-    if(!hasSells)return;
-    const totalSellQty=g.sells.reduce((s,o)=>s+(o.qty||0),0);
-    const totalBuyQty =g.buys.reduce((s,o)=>s+(o.qty||0),0);
-    const sellValue   =g.sells.reduce((s,o)=>s+(o.entry_price||0)*(o.qty||0),0);
-    const buyValue    =g.buys.reduce((s,o)=>s+(o.entry_price||0)*(o.qty||0),0);
-    const sellAvg     =totalSellQty>0?sellValue/totalSellQty:0;
+  // Group by symbol
+  const bySymbol={};
+  completed.forEach(o=>{
+    const s=o.tradingsymbol;
+    if(!bySymbol[s])bySymbol[s]={buys:[],sells:[],product:o.product,date:o.order_timestamp?o.order_timestamp.slice(0,10):fromDate};
+    if(o.transaction_type==='BUY')bySymbol[s].buys.push(o);
+    else if(o.transaction_type==='SELL')bySymbol[s].sells.push(o);
+    // Track latest date
+    const oDate=o.order_timestamp?o.order_timestamp.slice(0,10):'';
+    if(oDate>bySymbol[s].date)bySymbol[s].date=oDate;
+  });
+
+  Object.keys(bySymbol).forEach(sym=>{
+    const g=bySymbol[sym];
+
+    // BUY side totals
+    const totalBuyQty =g.buys.reduce((s,o)=>s+(o.quantity||0),0);
+    const buyValue    =g.buys.reduce((s,o)=>s+(o.average_price||o.price||0)*(o.quantity||0),0);
     const buyAvg      =totalBuyQty>0?buyValue/totalBuyQty:0;
-    const qty         =Math.min(totalBuyQty||totalSellQty, totalSellQty);
-    let pnl=0;
-    if(hasBuys&&hasSells){
-      const mq=Math.min(totalBuyQty,totalSellQty);
-      pnl=mq*(sellAvg-buyAvg);
-    } else if(hasSells&&!hasBuys){
-      // Delivery sell — check exit_price in sell record
-      const hld=(_brokerData.holdings||[]).find(h=>h.tradingsymbol===g.sym);
-      const avgCost=g.sells[0].entry_price||hld?.average_price||0;
-      pnl=(sellAvg-avgCost)*totalSellQty;
+
+    // SELL side totals
+    const totalSellQty=g.sells.reduce((s,o)=>s+(o.quantity||0),0);
+    const sellValue   =g.sells.reduce((s,o)=>s+(o.average_price||o.price||0)*(o.quantity||0),0);
+    const sellAvg     =totalSellQty>0?sellValue/totalSellQty:0;
+
+    // If no sells at all — pure open buy, skip (not a closed trade)
+    if(totalSellQty===0)return;
+
+    // Net qty remaining after sells
+    const netQty=totalBuyQty-totalSellQty;
+
+    // Matched qty (the portion that was actually closed)
+    const matchedQty=Math.min(totalBuyQty,totalSellQty)||totalSellQty;
+
+    // P&L calculation:
+    // If we have buys: P&L = sell_value - cost_of_matched_qty
+    // If delivery sell (no buy today): use holdings avg price as cost
+    let pnl=0, entryAvg=buyAvg;
+    if(totalBuyQty>0){
+      // Intraday or partial delivery exit bought today
+      const costOfSold=matchedQty*buyAvg;
+      pnl=sellValue-costOfSold;
+    } else {
+      // Delivery exit — no buy today, cost from holdings
+      const hld=(_brokerData.holdings||[]).find(h=>h.tradingsymbol===sym);
+      const pos=(_brokerData.positions||[]).find(p=>p.tradingsymbol===sym&&p.product==='CNC');
+      entryAvg=hld?hld.average_price:(pos?pos.average_price:0);
+      if(entryAvg>0){
+        pnl=sellValue-(entryAvg*totalSellQty);
+      } else if(pos){
+        pnl=pos.realised||0;
+      }
     }
-    const pnlPct=buyValue>0?(pnl/buyValue*100):(sellValue>0?(pnl/sellValue*100):0);
-    const isDelivery=!g.product||g.product==='CNC'||g.product==='LIMIT'||g.product==='NRML';
+
+    const investedSold = matchedQty*(entryAvg||buyAvg||0);
+    const pnlPct = investedSold>0?(pnl/investedSold*100):0;
+    const isDelivery=g.product==='CNC'||g.product==='NRML';
+    const latestTime=g.sells.length?
+      g.sells.reduce((a,b)=>(a.order_timestamp||'')>(b.order_timestamp||'')?a:b).order_timestamp
+      :'';
+    const timeStr=latestTime?new Date(latestTime).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}):'—';
+
     rows.push({
-      sym:g.sym,date:g.date,product:g.product,isDelivery,
-      qty,buyAvg:parseFloat(buyAvg.toFixed(2)),buyValue:parseFloat(buyValue.toFixed(2)),
-      sellAvg:parseFloat(sellAvg.toFixed(2)),sellValue:parseFloat(sellValue.toFixed(2)),
-      realisedPnl:parseFloat(pnl.toFixed(2)),
-      pnlPct:parseFloat(pnlPct.toFixed(2)),
-      turnover:(hasBuys?buyValue:0)+sellValue,
-      time:g.sells[0]?.time||'—',source:'nandi_log'
+      sym, date:g.date, product:g.product, isDelivery,
+      buyQty:totalBuyQty, buyAvg:parseFloat(buyAvg.toFixed(2)), buyValue:parseFloat(buyValue.toFixed(2)),
+      sellQty:totalSellQty, sellAvg:parseFloat(sellAvg.toFixed(2)), sellValue:parseFloat(sellValue.toFixed(2)),
+      netQty, matchedQty, pnl:parseFloat(pnl.toFixed(2)), pnlPct:parseFloat(pnlPct.toFixed(2)),
+      turnover:buyValue+sellValue, time:timeStr,
+      entryAvg:parseFloat((entryAvg||buyAvg||0).toFixed(2))
     });
   });
 
-  // ── Supplement with today's broker orders (not yet in NANDI log) ──
-  if(fromDate<=new Date().toISOString().slice(0,10)&&toDate>=new Date().toISOString().slice(0,10)){
-    const today=new Date().toISOString().slice(0,10);
-    const completed=orders.filter(o=>o.status==='COMPLETE');
-    const bySymbol={};
-    completed.forEach(o=>{
-      const s=o.tradingsymbol;
-      if(!bySymbol[s])bySymbol[s]={buys:[],sells:[],product:o.product};
-      if(o.transaction_type==='BUY')bySymbol[s].buys.push(o);
-      else bySymbol[s].sells.push(o);
-    });
-    Object.keys(bySymbol).forEach(sym=>{
-      if(rows.find(r=>r.sym===sym&&r.date===today))return; // already from nandi log
-      const{buys,sells,product}=bySymbol[sym];
-      if(!sells.length)return;
-      const totalSellQty=sells.reduce((s,o)=>s+(o.quantity||0),0);
-      const totalBuyQty =buys.reduce((s,o)=>s+(o.quantity||0),0);
-      const sellValue   =sells.reduce((s,o)=>s+(o.average_price||o.price||0)*(o.quantity||0),0);
-      const buyValue    =buys.reduce((s,o)=>s+(o.average_price||o.price||0)*(o.quantity||0),0);
-      const sellAvg     =totalSellQty>0?sellValue/totalSellQty:0;
-      const buyAvg      =totalBuyQty>0?buyValue/totalBuyQty:0;
-      const qty         =Math.min(totalBuyQty||totalSellQty,totalSellQty);
-      let pnl=0;
-      if(buys.length&&sells.length){
-        pnl=Math.min(totalBuyQty,totalSellQty)*(sellAvg-buyAvg);
-      } else {
-        const hld=(_brokerData.holdings||[]).find(h=>h.tradingsymbol===sym);
-        const pos=(_brokerData.positions||[]).find(p=>p.tradingsymbol===sym);
-        const avgCost=hld?.average_price||0;
-        if(avgCost>0)pnl=(sellAvg-avgCost)*totalSellQty;
-        else if(pos)pnl=pos.realised||0;
-      }
-      const pnlPct=buyValue>0?(pnl/buyValue*100):(sellValue>0?(pnl/sellValue*100):0);
-      const isDelivery=product==='CNC'||product==='NRML';
-      const latestSell=sells.reduce((a,b)=>a.order_timestamp>b.order_timestamp?a:b,sells[0]);
-      const timeStr=latestSell?.order_timestamp?new Date(latestSell.order_timestamp).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}):'—';
-      rows.push({
-        sym,date:today,product,isDelivery,qty,
-        buyAvg:parseFloat(buyAvg.toFixed(2)),buyValue:parseFloat(buyValue.toFixed(2)),
-        sellAvg:parseFloat(sellAvg.toFixed(2)),sellValue:parseFloat(sellValue.toFixed(2)),
-        realisedPnl:parseFloat(pnl.toFixed(2)),
-        pnlPct:parseFloat(pnlPct.toFixed(2)),
-        turnover:(buys.length?buyValue:0)+sellValue,
-        time:timeStr,source:'broker_orders'
-      });
-    });
-  }
-
-  return rows;
+  return rows.sort((a,b)=>b.date.localeCompare(a.date)||a.sym.localeCompare(b.sym));
 }
 
-// ── Build day-level P&L cache from rows ──
+// ── Day cache for calendar ──
 function buildDayCache(rows){
-  _apDayPnlCache={};
+  _apDayCache={};
   rows.forEach(r=>{
     if(!r.date)return;
-    if(!_apDayPnlCache[r.date])_apDayPnlCache[r.date]={pnl:0,trades:0,wins:0,losses:0,turnover:0};
-    const c=_apDayPnlCache[r.date];
-    c.pnl+=r.realisedPnl; c.trades++; c.turnover+=r.turnover;
-    if(r.realisedPnl>0)c.wins++;else if(r.realisedPnl<0)c.losses++;
+    if(!_apDayCache[r.date])_apDayCache[r.date]={pnl:0,trades:0};
+    _apDayCache[r.date].pnl+=r.pnl;
+    _apDayCache[r.date].trades++;
   });
-  // Round
-  Object.values(_apDayPnlCache).forEach(c=>{c.pnl=parseFloat(c.pnl.toFixed(2))});
+  Object.values(_apDayCache).forEach(c=>c.pnl=parseFloat(c.pnl.toFixed(2)));
 }
 
-// ── Update summary strip ──
+// ── Summary strip ──
 function updateApSummary(rows){
-  const wins=rows.filter(r=>r.realisedPnl>0);
-  const losses=rows.filter(r=>r.realisedPnl<0);
-  const totalPnl=rows.reduce((s,r)=>s+r.realisedPnl,0);
-  const winAmt=wins.reduce((s,r)=>s+r.realisedPnl,0);
-  const lossAmt=losses.reduce((s,r)=>s+r.realisedPnl,0);
+  const wins=rows.filter(r=>r.pnl>0), losses=rows.filter(r=>r.pnl<0);
+  const totalPnl=rows.reduce((s,r)=>s+r.pnl,0);
+  const winAmt=wins.reduce((s,r)=>s+r.pnl,0);
+  const lossAmt=losses.reduce((s,r)=>s+r.pnl,0);
   const totalTurnover=rows.reduce((s,r)=>s+r.turnover,0);
-  // Day-level stats
-  const tradingDays=Object.keys(_apDayPnlCache).length;
-  const winDays=Object.values(_apDayPnlCache).filter(d=>d.pnl>0).length;
-  const lossDays=Object.values(_apDayPnlCache).filter(d=>d.pnl<0).length;
+  const tradingDays=Object.keys(_apDayCache).length;
+  const winDays=Object.values(_apDayCache).filter(d=>d.pnl>0).length;
+  const lossDays=Object.values(_apDayCache).filter(d=>d.pnl<0).length;
   const wr=tradingDays>0?Math.round(winDays/tradingDays*100):0;
-
   function cls(v){return v>=0?'color:var(--bull)':'color:var(--bear)'}
   function fmt(v){return(v>=0?'+':'')+'₹'+Math.abs(v).toLocaleString('en-IN',{maximumFractionDigits:0})}
-
-  const rg=document.getElementById('apRealisedGross');
-  if(rg){rg.textContent=fmt(totalPnl);rg.style=cls(totalPnl)}
-  const rs=document.getElementById('apRealisedSub');
-  if(rs)rs.textContent=`${rows.length} trades · ${tradingDays} trading day${tradingDays!==1?'s':''}`;
+  const rg=document.getElementById('apRealisedGross');if(rg){rg.textContent=fmt(totalPnl);rg.style=cls(totalPnl)}
+  const rs=document.getElementById('apRealisedSub');if(rs)rs.textContent=`${rows.length} trade${rows.length!==1?'s':''} · ${tradingDays} day${tradingDays!==1?'s':''}`;
   const wc=document.getElementById('apWinCount');if(wc)wc.textContent=winDays;
-  const wa=document.getElementById('apWinAmt');
-  if(wa){wa.textContent=fmt(winAmt);wa.style=cls(winAmt)}
+  const wa=document.getElementById('apWinAmt');if(wa){wa.textContent=fmt(winAmt);wa.style=cls(winAmt)}
   const lc=document.getElementById('apLossCount');if(lc)lc.textContent=lossDays;
-  const la=document.getElementById('apLossAmt');
-  if(la){la.textContent=fmt(lossAmt);la.style=cls(lossAmt)}
+  const la=document.getElementById('apLossAmt');if(la){la.textContent=fmt(lossAmt);la.style=cls(lossAmt)}
   const wr2=document.getElementById('apWinRate');if(wr2)wr2.textContent=wr+'%';
-  const ws=document.getElementById('apWinRateSub');
-  if(ws)ws.textContent=`${winDays}W-days / ${lossDays}L-days`;
-  const to=document.getElementById('apTurnover');
-  if(to)to.textContent='₹'+Math.round(totalTurnover).toLocaleString('en-IN');
+  const ws=document.getElementById('apWinRateSub');if(ws)ws.textContent=`${winDays}W / ${lossDays}L days`;
+  const to=document.getElementById('apTurnover');if(to)to.textContent='₹'+Math.round(totalTurnover).toLocaleString('en-IN');
 }
 
-// ── MAIN renderAllPositions ──
+// ── MAIN ──
 function renderAllPositions(){
-  if(!_apFromDate){setApRange('today');return}
-  const rows=buildTradeRows(_apFromDate,_apToDate);
+  if(!_apFromDate){setApRange('today');return;}
+  const rows=buildRows(_apFromDate,_apToDate);
   buildDayCache(rows);
   updateApSummary(rows);
-  if(_apView==='calendar') renderApCalendar();
-  else renderTradesList();
   const countEl=document.getElementById('apCount');
-  if(countEl)countEl.textContent=`${rows.length} trades · ${_apFromDate}${_apFromDate!==_apToDate?' → '+_apToDate:''}`;
+  if(countEl)countEl.textContent=`${rows.length} trade${rows.length!==1?'s':''} · ${_apFromDate}${_apFromDate!==_apToDate?' → '+_apToDate:''}`;
+  if(_apView==='calendar')renderApCalendar();
+  else renderTradesList();
 }
 
-// ── CALENDAR RENDER ──
+// ── CALENDAR ──
 function renderApCalendar(){
   const grid=document.getElementById('apCalGrid');
-  const lbl=document.getElementById('apCalMonthLabel');
+  const lbl =document.getElementById('apCalMonthLabel');
   if(!grid)return;
   const today=new Date().toISOString().slice(0,10);
   const year=_apCalYear||new Date().getFullYear();
-  const month=_apCalMonth!==undefined?_apCalMonth:new Date().getMonth();
-  const monthNames=['January','February','March','April','May','June','July','August','September','October','November','December'];
-  if(lbl)lbl.textContent=`${monthNames[month]} ${year}`;
-
-  // Day-of-week headers
-  const dows=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  const first=new Date(year,month,1);
-  // Monday=0 offset
-  const startOffset=(first.getDay()+6)%7; // 0=Mon
+  const month=(_apCalMonth!==undefined)?_apCalMonth:new Date().getMonth();
+  const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  if(lbl)lbl.textContent=`${MONTHS[month]} ${year}`;
+  const startOffset=(new Date(year,month,1).getDay()+6)%7; // Mon=0
   const daysInMonth=new Date(year,month+1,0).getDate();
-
+  const DOWS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   let html='';
-  // Headers
-  dows.forEach(d=>{html+=`<div class="ap-cal-doh">${d}</div>`});
-  // Empty cells before first
-  for(let i=0;i<startOffset;i++) html+=`<div class="ap-cal-day ap-empty"></div>`;
-  // Days
+  DOWS.forEach(d=>{html+=`<div class="ap-cal-doh">${d}</div>`});
+  for(let i=0;i<startOffset;i++)html+=`<div class="ap-cal-day ap-empty"></div>`;
   for(let d=1;d<=daysInMonth;d++){
-    const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const dayData=_apDayPnlCache[dateStr];
-    const isToday=dateStr===today;
-    const isSel=dateStr===_apSelectedDay;
-    const isInRange=dateStr>=_apFromDate&&dateStr<=_apToDate;
+    const ds=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dc=_apDayCache[ds];
+    const inRange=ds>=_apFromDate&&ds<=_apToDate;
+    const isToday=ds===today, isSel=ds===_apSelDay;
     let cls='ap-cal-day';
-    if(!isInRange) cls+=' ap-nodata';
-    else if(!dayData) cls+=' ap-flat';
-    else if(dayData.pnl>0) cls+=' ap-win';
-    else if(dayData.pnl<0) cls+=' ap-loss';
+    if(!inRange)cls+=' ap-nodata';
+    else if(!dc)cls+=' ap-flat';
+    else if(dc.pnl>0)cls+=' ap-win';
+    else if(dc.pnl<0)cls+=' ap-loss';
     else cls+=' ap-flat';
-    if(isToday) cls+=' ap-today';
-    if(isSel) cls+=' ap-selected';
-
+    if(isToday)cls+=' ap-today';
+    if(isSel)cls+=' ap-selected';
     let inner=`<div class="ap-cal-dn">${d}</div>`;
-    if(dayData&&isInRange){
-      const pnlCls=dayData.pnl>=0?'color:var(--bull)':'color:var(--bear)';
-      const pnlStr=(dayData.pnl>=0?'+':'')+
-        (Math.abs(dayData.pnl)>=1000
-          ?'₹'+(Math.abs(dayData.pnl)/1000).toFixed(1)+'k'
-          :'₹'+Math.abs(dayData.pnl).toFixed(0));
-      inner+=`<div class="ap-cal-pnl" style="${pnlCls}">${pnlStr}</div>`;
-      inner+=`<div class="ap-cal-trades">${dayData.trades} trade${dayData.trades!==1?'s':''}</div>`;
-    } else if(!isInRange){
-      inner+='<div style="flex:1"></div>';
+    if(dc&&inRange){
+      const pnlStr=(dc.pnl>=0?'+':'')+(Math.abs(dc.pnl)>=1000?'₹'+(Math.abs(dc.pnl)/1000).toFixed(1)+'k':'₹'+Math.abs(dc.pnl).toFixed(0));
+      const pc=dc.pnl>=0?'color:var(--bull)':'color:var(--bear)';
+      inner+=`<div class="ap-cal-pnl" style="${pc}">${pnlStr}</div>`;
+      inner+=`<div class="ap-cal-trades">${dc.trades} trade${dc.trades!==1?'s':''}</div>`;
     }
-    html+=`<div class="${cls}" onclick="apSelectDay('${dateStr}')" title="${dateStr}${dayData?' · P&L: '+(dayData.pnl>=0?'+':'')+'₹'+dayData.pnl:''}">
-      ${inner}
-    </div>`;
+    html+=`<div class="${cls}" onclick="apSelectDay('${ds}')" title="${ds}${dc?' · '+(dc.pnl>=0?'+':'')+'₹'+dc.pnl:''}">
+      ${inner}</div>`;
   }
   grid.innerHTML=html;
 }
-
 function apCalNav(dir){
   _apCalMonth+=dir;
-  if(_apCalMonth<0){_apCalMonth=11;_apCalYear--}
-  if(_apCalMonth>11){_apCalMonth=0;_apCalYear++}
+  if(_apCalMonth<0){_apCalMonth=11;_apCalYear--;}
+  if(_apCalMonth>11){_apCalMonth=0;_apCalYear++;}
   renderApCalendar();
 }
-
-function apSelectDay(dateStr){
-  const dayData=_apDayPnlCache[dateStr];
-  // Toggle: click same day again = deselect
-  if(_apSelectedDay===dateStr){clearDayFilter();return}
-  _apSelectedDay=dateStr;
-  renderApCalendar(); // re-highlight
-  // Show selected day banner + switch to list
+function apSelectDay(ds){
+  if(_apSelDay===ds){clearDayFilter();return;}
+  _apSelDay=ds;
+  renderApCalendar();
   const banner=document.getElementById('apSelectedDayBanner');
-  const bannerLbl=document.getElementById('apSelectedDayLabel');
-  if(banner){banner.style.display='flex'}
-  if(bannerLbl){
-    const d=new Date(dateStr);
-    const dayName=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
-    bannerLbl.textContent=`${dayName}, ${dateStr}${dayData?' · '+dayData.trades+' trades · P&L: '+(dayData.pnl>=0?'+':'')+'₹'+dayData.pnl:'  · No trades'}`;
+  const bLbl=document.getElementById('apSelectedDayLabel');
+  const dc=_apDayCache[ds];
+  if(banner)banner.style.display='flex';
+  if(bLbl){
+    const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const dn=DAYS[new Date(ds).getDay()];
+    bLbl.textContent=`${dn}, ${ds}${dc?' · '+dc.trades+' trades · P&L: '+(dc.pnl>=0?'+':'')+'₹'+dc.pnl:' · No trades'}`;
   }
   setApView('list');
   renderTradesList();
 }
-
 function clearDayFilter(){
-  _apSelectedDay='';
+  _apSelDay='';
   const banner=document.getElementById('apSelectedDayBanner');
   if(banner)banner.style.display='none';
-  renderTradesList();
-  renderApCalendar();
+  renderTradesList();renderApCalendar();
 }
 
-// ── TRADES LIST RENDER ──
+// ── TRADES LIST ──
 function renderTradesList(){
   const tb=document.getElementById('brkAllPosBody');if(!tb)return;
-  let rows=buildTradeRows(_apFromDate,_apToDate);
-  // Day filter
-  if(_apSelectedDay) rows=rows.filter(r=>r.date===_apSelectedDay);
+  let rows=buildRows(_apFromDate,_apToDate);
+  if(_apSelDay)rows=rows.filter(r=>r.date===_apSelDay);
   // Type filter
-  const typeF=(document.getElementById('apTypeFilter')||{}).value||'all';
-  if(typeF==='wins')     rows=rows.filter(r=>r.realisedPnl>0);
-  else if(typeF==='losses')   rows=rows.filter(r=>r.realisedPnl<0);
-  else if(typeF==='delivery') rows=rows.filter(r=>r.isDelivery);
-  else if(typeF==='intraday') rows=rows.filter(r=>!r.isDelivery);
+  const tf=(document.getElementById('apTypeFilter')||{}).value||'all';
+  if(tf==='wins')   rows=rows.filter(r=>r.pnl>0);
+  else if(tf==='losses')  rows=rows.filter(r=>r.pnl<0);
+  else if(tf==='delivery')rows=rows.filter(r=>r.isDelivery);
+  else if(tf==='intraday')rows=rows.filter(r=>!r.isDelivery);
   // Sort
-  const sortF=(document.getElementById('apSortFilter')||{}).value||'date_desc';
-  if(sortF==='date_desc')  rows.sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
-  else if(sortF==='pnl_desc')   rows.sort((a,b)=>b.realisedPnl-a.realisedPnl);
-  else if(sortF==='pnl_asc')    rows.sort((a,b)=>a.realisedPnl-b.realisedPnl);
-  else if(sortF==='sym')        rows.sort((a,b)=>a.sym.localeCompare(b.sym));
-  else if(sortF==='turnover')   rows.sort((a,b)=>b.turnover-a.turnover);
+  const sf=(document.getElementById('apSortFilter')||{}).value||'date_desc';
+  if(sf==='date_desc')  rows.sort((a,b)=>b.date.localeCompare(a.date));
+  else if(sf==='pnl_desc')   rows.sort((a,b)=>b.pnl-a.pnl);
+  else if(sf==='pnl_asc')    rows.sort((a,b)=>a.pnl-b.pnl);
+  else if(sf==='sym')        rows.sort((a,b)=>a.sym.localeCompare(b.sym));
+  else if(sf==='turnover')   rows.sort((a,b)=>b.turnover-a.turnover);
 
   if(!rows.length){
-    tb.innerHTML=`<tr><td colspan="11" class="empty" style="padding:28px">
+    tb.innerHTML=`<tr><td colspan="12" class="empty" style="padding:28px">
       <div style="font-size:15px;margin-bottom:6px">No closed trades found</div>
-      <div style="font-size:9px;color:var(--text3)">${_apSelectedDay?'No trades on '+_apSelectedDay:'Try a wider date range or refresh broker data'}</div>
+      <div style="font-size:9px;color:var(--text3)">${_apSelDay?'No trades on '+_apSelDay:'Complete a sell order or refresh broker data'}</div>
     </td></tr>`;
     return;
   }
 
-  // Running total column
+  // Running cumulative P&L
   let running=0;
   tb.innerHTML=rows.map(r=>{
-    running+=r.realisedPnl;
-    const pnlCls=r.realisedPnl>=0?'c-bull':'c-bear';
-    const runCls=running>=0?'c-bull':'c-bear';
-    const typeBadge=r.isDelivery
+    running+=r.pnl;
+    const pc=r.pnl>=0?'c-bull':'c-bear';
+    const rc=running>=0?'c-bull':'c-bear';
+    const tb2=r.isDelivery
       ?'<span class="b b-bull" style="font-size:7px">📦 CNC</span>'
       :'<span class="b b-kite" style="font-size:7px">⚡ MIS</span>';
-    const pnlCell=`<div class="pnl-cell" style="align-items:flex-end">
-      <span class="pnl-amt ${pnlCls}">${r.realisedPnl>=0?'+':''}₹${Math.abs(r.realisedPnl).toLocaleString('en-IN',{maximumFractionDigits:0})}</span>
-      <span class="pnl-pct ${pnlCls}">${r.pnlPct>=0?'+':''}${r.pnlPct.toFixed(2)}%</span>
-    </div>`;
-    const rowBg=r.realisedPnl>0?'rgba(5,150,105,.04)':r.realisedPnl<0?'rgba(220,38,38,.04)':'';
-    const ltp=r.sellAvg||0;
+    const rowBg=r.pnl>0?'rgba(5,150,105,.04)':r.pnl<0?'rgba(220,38,38,.04)':'';
+    // Net qty badge
+    const netBadge=r.netQty>0
+      ?`<span class="b b-amb" style="font-size:7px">+${r.netQty} open</span>`
+      :r.netQty<0
+        ?`<span class="b b-bear" style="font-size:7px">${r.netQty} short</span>`
+        :`<span class="b b-dim" style="font-size:7px">✓ flat</span>`;
     return`<tr style="background:${rowBg}">
       <td style="position:sticky;left:0;background:${rowBg||'var(--bg2)'}">
         <div style="font-family:var(--mono);font-weight:700;font-size:10px">${r.sym}</div>
-        <div style="font-family:var(--mono);font-size:7px;color:var(--text3)">${r.product||'—'}</div>
+        <div style="font-family:var(--mono);font-size:7px;color:var(--text3)">${r.date} · ${r.time}</div>
       </td>
-      <td style="text-align:center">${typeBadge}</td>
-      <td style="text-align:right;font-family:var(--mono);font-weight:700">${r.qty}</td>
+      <td style="text-align:center">${tb2}</td>
+      <td style="text-align:right;font-family:var(--mono)">
+        ${r.buyQty>0?r.buyQty:'<span class="c-dim">—</span>'}
+      </td>
       <td style="text-align:right;font-family:var(--mono);color:var(--text2)">
-        ${r.hasBuys||r.buyAvg?'₹'+r.buyAvg.toLocaleString('en-IN',{minimumFractionDigits:2}):'<span class="c-dim">—</span>'}
+        ${r.buyQty>0?'₹'+r.entryAvg.toLocaleString('en-IN',{minimumFractionDigits:2}):'<span class="c-dim">—</span>'}
       </td>
       <td style="text-align:right;font-family:var(--mono);color:var(--text2)">
-        ${r.buyValue?'₹'+r.buyValue.toLocaleString('en-IN',{maximumFractionDigits:0}):'<span class="c-dim">—</span>'}
+        ${r.buyValue>0?'₹'+r.buyValue.toLocaleString('en-IN',{maximumFractionDigits:0}):'<span class="c-dim">—</span>'}
       </td>
+      <td style="text-align:right;font-family:var(--mono)">${r.sellQty}</td>
       <td style="text-align:right;font-family:var(--mono)">₹${r.sellAvg.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
       <td style="text-align:right;font-family:var(--mono)">₹${r.sellValue.toLocaleString('en-IN',{maximumFractionDigits:0})}</td>
-      <td style="text-align:right">${pnlCell}</td>
-      <td style="text-align:right;font-family:var(--mono);font-size:9px" class="${runCls}" title="Running total">
+      <td style="text-align:center">${netBadge}</td>
+      <td style="text-align:right">
+        <div class="pnl-cell" style="align-items:flex-end">
+          <span class="pnl-amt ${pc}">${r.pnl>=0?'+':''}₹${Math.abs(r.pnl).toLocaleString('en-IN',{maximumFractionDigits:0})}</span>
+          <span class="pnl-pct ${pc}">${r.pnlPct>=0?'+':''}${r.pnlPct.toFixed(2)}%</span>
+        </div>
+      </td>
+      <td style="text-align:right;font-family:var(--mono);font-size:9px" class="${rc}" title="Running total for period">
         ${running>=0?'+':''}₹${Math.abs(running).toLocaleString('en-IN',{maximumFractionDigits:0})}
       </td>
-      <td style="text-align:center;font-family:var(--mono);font-size:9px;color:var(--text2)">${r.date!==_apToDate?r.date:r.time||r.date}</td>
       <td style="text-align:center">
-        <button class="ob-buy" onclick="showOrderModal('${r.sym}','BUY',${ltp},0,0,${r.qty})" title="Re-enter">▲</button>
+        <button class="ob-buy" onclick="showOrderModal('${r.sym}','BUY',${r.sellAvg},0,0,${r.sellQty})" title="Re-enter">▲</button>
       </td>
     </tr>`;
   }).join('');
 }
 
 function exportAllPosCSV(){
-  if(!_apFromDate){toast('Select a date range first','err');return}
-  const rows=buildTradeRows(_apFromDate,_apToDate);
-  if(!rows.length){toast('No trades to export','err');return}
-  const hdrs=['Date','Symbol','Type','Qty','BuyAvg','BuyValue','SellAvg','SellValue','RealisedPnL','PnL%','Time'];
-  const csvRows=rows.map(r=>[
-    r.date,r.sym,r.isDelivery?'CNC':'MIS',r.qty,
-    r.buyAvg,r.buyValue,r.sellAvg,r.sellValue,
-    r.realisedPnl.toFixed(2),r.pnlPct.toFixed(2),r.time
-  ].join(','));
-  const blob=new Blob([[hdrs.join(','),...csvRows].join('\n')],{type:'text/csv'});
+  if(!_apFromDate){toast('Select a date range first','err');return;}
+  const rows=buildRows(_apFromDate,_apToDate);
+  if(!rows.length){toast('No trades to export','err');return;}
+  const hdrs=['Date','Symbol','Type','BuyQty','EntryAvg','BuyValue','SellQty','SellAvg','SellValue','NetQty','PnL_INR','PnL_Pct','Time'];
+  const csv=rows.map(r=>[r.date,r.sym,r.isDelivery?'CNC':'MIS',
+    r.buyQty,r.entryAvg,r.buyValue,r.sellQty,r.sellAvg,r.sellValue,
+    r.netQty,r.pnl.toFixed(2),r.pnlPct.toFixed(2),r.time].join(','));
+  const blob=new Blob([[hdrs.join(','),...csv].join('\n')],{type:'text/csv'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=`nandi_realised_pnl_${_apFromDate}_${_apToDate}.csv`;
-  a.click();toast('P&L exported','ok');
+  a.download=`nandi_trades_${_apFromDate}_${_apToDate}.csv`;
+  a.click();toast('Exported','ok');
 }
 
 function exitBrokerPosition(sym,direction,cmp,qty,product){
