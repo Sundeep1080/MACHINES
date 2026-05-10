@@ -974,17 +974,19 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
     <div class="tw"><table id="brkHldTbl">
       <thead><tr>
         <th>Instrument</th>
-        <th>LTP ₹</th>
-        <th style="text-align:right">Total P&amp;L</th>
-        <th style="text-align:right">Day's P&amp;L</th>
-        <th style="text-align:right">Current Value ₹</th>
-        <th style="text-align:right">Invested ₹</th>
+        <th>LTP ₹ / Day%</th>
         <th style="text-align:center">Qty</th>
         <th style="text-align:right">Avg Price ₹</th>
+        <th style="text-align:right">vs Cost</th>
+        <th style="text-align:right">Invested ₹</th>
+        <th style="text-align:right">Current ₹</th>
+        <th style="text-align:right">Unrealised P&amp;L</th>
+        <th style="text-align:right">Day's P&amp;L</th>
+        <th style="text-align:right">Weight</th>
         <th style="text-align:right">Realised P&amp;L</th>
         <th>Action</th>
       </tr></thead>
-      <tbody id="brkHldBody"><tr><td colspan="10" class="empty">Click Refresh All to load</td></tr></tbody>
+      <tbody id="brkHldBody"><tr><td colspan="12" class="empty">Click Refresh All to load</td></tr></tbody>
     </table></div>
   </div>
 
@@ -2567,72 +2569,117 @@ function renderBrokerHoldings(){
   if(!tb)return;
   const hld=_brokerData.holdings;
   if(!hld.length){
-    tb.innerHTML='<tr><td colspan="10" class="empty">No holdings — click Refresh All to load</td></tr>';
+    tb.innerHTML='<tr><td colspan="12" class="empty">No holdings — click Refresh All to load</td></tr>';
     if(strip)strip.innerHTML='';
     return;
   }
 
-  // ── Compute totals ──
-  let totalInvested=0,totalCurrent=0,totalPnl=0,totalDayPnl=0,totalRealised=0;
+  // ── Compute totals using effectiveQty = settled + T1 ──
+  // T1 = bought today, not yet settled but still your shares; must be included
+  let totalInvested=0,totalCurrent=0,totalPnl=0,totalDayPnl=0;
   hld.forEach(h=>{
-    const qty=h.quantity||0,avgCost=h.average_price||0,ltp=h.last_price||0;
-    const inv=avgCost*qty, cur=ltp*qty;
-    // CORRECT day P&L: day_change is per-share change from prev close, multiply by qty
-    const dayPnl=(h.day_change||0)*qty;
-    totalInvested+=inv; totalCurrent+=cur;
+    const effQty=(h.quantity||0)+(h.t1_quantity||0);
+    totalInvested+=(h.average_price||0)*effQty;
+    totalCurrent+=(h.last_price||0)*effQty;
     totalPnl+=h.pnl||0;
-    totalDayPnl+=dayPnl;
-    // realised_quantity exists but realised P&L amount needs close_price
-    // Use: realised_quantity * (sell_avg - avg_cost) approximated from available fields
-    // Zerodha doesn't expose realised P&L directly in holdings endpoint — show from positions
+    totalDayPnl+=(h.day_change||0)*effQty;
   });
-  const totalPnlPct=totalInvested>0?(totalPnl/totalInvested*100):0;
-  const totalDayPnlPct=totalInvested>0?(totalDayPnl/totalInvested*100):0;
 
   // ── Summary strip ──
   if(strip){
-    function sc(v){return v>=0?'c-bull':'c-bear'}
-    function sf(v,inv){return `<span class="${sc(v)}">${v>=0?'+':''}₹${Math.round(Math.abs(v)).toLocaleString('en-IN')}</span><span style="font-size:8px;color:var(--text2);margin-left:4px">(${inv>0?((v/inv*100)>=0?'+':'')+(v/inv*100).toFixed(2):'—'}%)</span>`}
+    const sc=v=>v>=0?'c-bull':'c-bear';
+    const sf=(v,inv)=>`<span class="${sc(v)}" style="font-weight:700">${v>=0?'+':''}₹${Math.round(Math.abs(v)).toLocaleString('en-IN')}</span><span style="font-size:8px;color:var(--text2);margin-left:3px">(${inv>0?((v/inv*100)>=0?'+':'')+(v/inv*100).toFixed(2):'—'}%)</span>`;
+    const overallGain=totalCurrent-totalInvested;
     strip.innerHTML=`
-      <div class="brk-sum-box" style="border-left:3px solid var(--bull)"><label>Invested Value</label><span>₹${Math.round(totalInvested).toLocaleString('en-IN')}</span></div>
-      <div class="brk-sum-box" style="border-left:3px solid var(--amber)"><label>Current Value</label><span>₹${Math.round(totalCurrent).toLocaleString('en-IN')}</span></div>
-      <div class="brk-sum-box" style="border-left:3px solid ${totalPnl>=0?'var(--bull)':'var(--bear)'}"><label>Total P&L</label><span>${sf(totalPnl,totalInvested)}</span></div>
-      <div class="brk-sum-box" style="border-left:3px solid ${totalDayPnl>=0?'var(--teal)':'var(--bear)'}"><label>Day's P&L</label><span>${sf(totalDayPnl,totalInvested)}</span></div>
-      <div class="brk-sum-box" style="border-left:3px solid var(--text3)"><label>Holdings</label><span class="c-dim">${hld.length} stocks</span></div>
+      <div class="brk-sum-box" style="border-left:3px solid var(--text2)">
+        <label>Invested</label>
+        <span style="font-weight:700">₹${Math.round(totalInvested).toLocaleString('en-IN')}</span>
+        <span style="font-size:7px;color:var(--text3);display:block">${hld.length} stocks</span>
+      </div>
+      <div class="brk-sum-box" style="border-left:3px solid var(--amber)">
+        <label>Current Value</label>
+        <span style="font-weight:700">₹${Math.round(totalCurrent).toLocaleString('en-IN')}</span>
+      </div>
+      <div class="brk-sum-box" style="border-left:3px solid ${overallGain>=0?'var(--bull)':'var(--bear)'}">
+        <label>Overall Gain / Loss</label>
+        <span>${sf(overallGain,totalInvested)}</span>
+      </div>
+      <div class="brk-sum-box" style="border-left:3px solid ${totalPnl>=0?'var(--teal)':'var(--bear)'}">
+        <label>Unrealised P&L</label>
+        <span>${sf(totalPnl,totalInvested)}</span>
+      </div>
+      <div class="brk-sum-box" style="border-left:3px solid ${totalDayPnl>=0?'var(--bull)':'var(--bear)'}">
+        <label>Today's Change</label>
+        <span>${sf(totalDayPnl,totalInvested)}</span>
+      </div>
     `;
   }
 
-  // ── Sort: biggest loss first (like Kite default) ──
-  const sorted=[...hld].sort((a,b)=>{
-    // Sort by absolute P&L descending (losses show first in red like Kite)
-    return (a.pnl||0)-(b.pnl||0);
-  });
+  // ── Sort: biggest loser first (most attention needed) ──
+  const sorted=[...hld].sort((a,b)=>(a.pnl||0)-(b.pnl||0));
 
   tb.innerHTML=sorted.map(h=>{
-    const qty        = h.quantity||0;
-    const t1qty      = h.t1_quantity||0;  // unsettled qty bought today
-    const avgCost    = h.average_price||0;
-    const ltp        = h.last_price||0;
-    const invested   = avgCost*qty;
-    const current    = ltp*qty;
-    const pnl        = h.pnl||0;                         // unrealised P&L (Zerodha computes this)
-    const pnlPct     = invested>0?(pnl/invested*100):0;
-    // CORRECT: day_change is per-share movement from prev close; day_change_percentage is that %
-    const dayPnl     = (h.day_change||0)*qty;
-    const dayPnlPct  = h.day_change_percentage||0;
-    // Realised P&L — Zerodha positions API `realised` field for any sold portion today
-    // Holdings endpoint doesn't expose this directly; pull from positions if available
-    const posMatch   = _brokerData.positions.find(p=>p.tradingsymbol===h.tradingsymbol&&p.product==='CNC');
-    const realisedPnl= posMatch?(posMatch.realised||0):null;
+    const qty     = h.quantity||0;          // settled (T+1 complete)
+    const t1qty   = h.t1_quantity||0;       // bought today, awaiting settlement
+    const effQty  = qty+t1qty;              // total shares you own right now
+    const avgCost = h.average_price||0;
+    const ltp     = h.last_price||0;
 
+    // ── Core calculations — all use effectiveQty ──
+    const invested  = avgCost*effQty;       // what you paid
+    const current   = ltp*effQty;          // what it's worth now
+
+    // % vs cost: how far LTP is from your average buy price
+    const vsAvg     = avgCost>0?((ltp-avgCost)/avgCost*100):0;
+
+    // Unrealised P&L from Zerodha (user confirmed this is correct — don't recompute)
+    const pnl       = h.pnl||0;
+    const pnlPct    = invested>0?(pnl/invested*100):0;
+
+    // Day P&L uses effectiveQty
+    const dayPnl    = (h.day_change||0)*effQty;
+    const dayPnlPct = h.day_change_percentage||0;
+
+    // Portfolio weight: this stock's current value as % of total portfolio
+    const weight    = totalCurrent>0?(current/totalCurrent*100):0;
+
+    // Realised P&L — pull from allPositions (covers squared-off CNC too)
+    const posMatch    = (_brokerData.allPositions||_brokerData.positions||[]).find(p=>p.tradingsymbol===h.tradingsymbol&&p.product==='CNC');
+    const realisedPnl = posMatch?(posMatch.realised||0):null;
+
+    // ── CSS classes ──
     const pnlCls  = pnl>=0?'c-bull':'c-bear';
     const dayCls  = dayPnl>=0?'c-bull':'c-bear';
+    const vsAvgCls= vsAvg>=0?'c-bull':'c-bear';
     const relCls  = realisedPnl===null?'c-dim':realisedPnl>=0?'c-bull':'c-bear';
 
-    // T1 badge (unsettled today's purchase)
-    const t1Badge = t1qty>0?`<span class="hld-t1">T1: ${t1qty}</span>`:'';
+    // ── Qty cell: show full breakdown ──
+    const qtyCell = effQty===0
+      ? '<span class="c-dim">—</span>'
+      : qty>0&&t1qty>0
+        ? `<span style="font-weight:700">${effQty}</span><div style="font-size:7px;color:var(--text3);line-height:1.4">${qty} settled<br><span style="color:var(--amber)">+${t1qty} T1⏳</span></div>`
+        : t1qty>0
+          ? `<span style="color:var(--amber);font-weight:700">${t1qty}</span><div style="font-size:7px;color:var(--amber)">T1 ⏳ pending</div>`
+          : `<span style="font-weight:700">${qty}</span>`;
 
-    // Two-line P&L cells (matching Kite)
+    // ── vs Cost cell: % with mini progress bar ──
+    const barPct  = Math.min(Math.abs(vsAvg),25)/25*100; // cap bar at 25%
+    const vsAvgCell=`<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+      <span class="${vsAvgCls}" style="font-weight:700;font-size:10px">${vsAvg>=0?'+':''}${vsAvg.toFixed(2)}%</span>
+      <div style="width:44px;height:3px;background:var(--border);border-radius:2px;overflow:hidden">
+        <div style="width:${barPct}%;height:3px;background:${vsAvg>=0?'var(--bull)':'var(--bear)'};border-radius:2px"></div>
+      </div>
+    </div>`;
+
+    // ── Weight cell: % allocation bar ──
+    const weightCell=`<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+      <span style="font-size:9px;font-weight:700;color:var(--text2)">${weight.toFixed(1)}%</span>
+      <div style="width:44px;height:3px;background:var(--border);border-radius:2px;overflow:hidden">
+        <div style="width:${Math.min(weight,100)}%;height:3px;background:var(--amber);border-radius:2px"></div>
+      </div>
+    </div>`;
+
+    // ── P&L cells ──
     const pnlCell=`<div class="pnl-cell">
       <span class="pnl-amt ${pnlCls}">${pnl>=0?'+':''}₹${Math.round(Math.abs(pnl)).toLocaleString('en-IN')}</span>
       <span class="pnl-pct ${pnlCls}">${pnlPct>=0?'+':''}${pnlPct.toFixed(2)}%</span>
@@ -2643,19 +2690,26 @@ function renderBrokerHoldings(){
     </div>`;
 
     return`<tr>
-      <td><span class="hld-sym">${h.tradingsymbol}</span>${t1Badge}</td>
-      <td style="font-family:var(--mono);font-weight:700">₹${ltp.toFixed(2)}</td>
+      <td style="min-width:100px">
+        <div style="font-family:var(--mono);font-weight:700;font-size:10px;letter-spacing:.3px">${h.tradingsymbol}</div>
+        ${t1qty>0?`<span style="font-size:7px;background:rgba(217,119,6,.15);color:var(--amber);padding:1px 4px;border-radius:2px;border:1px solid rgba(217,119,6,.3)">T1</span>`:''}
+      </td>
+      <td style="font-family:var(--mono);font-weight:700;white-space:nowrap">
+        ₹${ltp.toFixed(2)}
+        <div style="font-size:7px;margin-top:1px" class="${dayCls}">${dayPnlPct>=0?'+':''}${dayPnlPct.toFixed(2)}% today</div>
+      </td>
+      <td style="text-align:center;font-family:var(--mono)">${qtyCell}</td>
+      <td style="text-align:right;font-family:var(--mono);color:var(--text2)">₹${avgCost.toFixed(2)}</td>
+      <td style="text-align:right">${vsAvgCell}</td>
+      <td style="text-align:right;font-family:var(--mono);color:var(--text2)">₹${Math.round(invested).toLocaleString('en-IN')}<div style="font-size:7px;color:var(--text3)">= ${effQty} × ₹${avgCost.toFixed(0)}</div></td>
+      <td style="text-align:right;font-family:var(--mono)">₹${Math.round(current).toLocaleString('en-IN')}<div style="font-size:7px;color:var(--text3)">= ${effQty} × ₹${ltp.toFixed(0)}</div></td>
       <td style="text-align:right">${pnlCell}</td>
       <td style="text-align:right">${dayCell}</td>
-      <td style="text-align:right;font-family:var(--mono)">₹${Math.round(current).toLocaleString('en-IN')}</td>
-      <td style="text-align:right;font-family:var(--mono);color:var(--text2)">₹${Math.round(invested).toLocaleString('en-IN')}</td>
-      <td style="text-align:center;font-family:var(--mono);font-weight:700">${qty}${t1qty>0?`<div style="font-size:7px;color:var(--amber)">+${t1qty} T1</div>`:''}
-      </td>
-      <td style="text-align:right;font-family:var(--mono);color:var(--text2)">₹${avgCost.toFixed(2)}</td>
+      <td style="text-align:right">${weightCell}</td>
       <td style="text-align:right;font-family:var(--mono)" class="${relCls}">
         ${realisedPnl!==null?(realisedPnl>=0?'+':'')+'₹'+Math.round(Math.abs(realisedPnl)).toLocaleString('en-IN'):'<span class="c-dim">—</span>'}
       </td>
-      <td><button class="ob-sell" onclick="exitBrokerPosition('${h.tradingsymbol}','SELL',${ltp},${qty},'CNC')">▼ SELL</button></td>
+      <td><button class="ob-sell" onclick="exitBrokerPosition('${h.tradingsymbol}','SELL',${ltp},${qty},'CNC')" ${qty===0?'disabled style="opacity:0.4;cursor:not-allowed"':''}>▼ SELL</button></td>
     </tr>`;
   }).join('');
 }
