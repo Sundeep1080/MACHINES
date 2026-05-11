@@ -974,19 +974,18 @@ tr.earn td:first-child{border-left:3px solid var(--pink)}
     <div class="tw"><table id="brkHldTbl">
       <thead><tr>
         <th>Instrument</th>
-        <th>LTP ₹ / Day%</th>
+        <th>LTP ₹</th>
         <th style="text-align:center">Qty</th>
         <th style="text-align:right">Avg Price ₹</th>
         <th style="text-align:right">vs Cost</th>
         <th style="text-align:right">Invested ₹</th>
         <th style="text-align:right">Current ₹</th>
         <th style="text-align:right">Unrealised P&amp;L</th>
-        <th style="text-align:right">Day's P&amp;L</th>
         <th style="text-align:right">Weight</th>
         <th style="text-align:right">Realised P&amp;L</th>
         <th>Action</th>
       </tr></thead>
-      <tbody id="brkHldBody"><tr><td colspan="12" class="empty">Click Refresh All to load</td></tr></tbody>
+      <tbody id="brkHldBody"><tr><td colspan="11" class="empty">Click Refresh All to load</td></tr></tbody>
     </table></div>
   </div>
 
@@ -1629,6 +1628,11 @@ async function processAll(bySymbol){
     if(closes.length<getMinDays())continue;
     const h9=calcHMA(closes,HMA_FAST),h10=calcHMA(closes,HMA_SLOW),{smi,sig:smiSig}=calcSMI(highs,lows,closes),atrs=calcATR(highs,lows,closes),hvs=calcHV(closes),n=closes.length-1;
     if(h9[n]===null||h10[n]===null)continue;
+    // ── DATA-LEVEL STALENESS: skip if the last candle in this stock's data is older than 4 days ──
+    // Prevents stale CSV uploads generating false "fresh" signals. 4 days covers weekends + 1 holiday.
+    const lastBar=rows[n].date,today0=new Date().toISOString().slice(0,10);
+    const calDiff=(new Date(today0)-new Date(lastBar))/(1000*60*60*24);
+    if(calDiff>4)continue;
     const bd=calcBands(closes);if(!bd)continue;
     const bandZone=bd.bandZone,signal=detectSALT(h9,h10,smi,smiSig,bandZone);
     if(signal==='WAIT')continue;
@@ -1644,13 +1648,29 @@ async function processAll(bySymbol){
     if(!tp||!sl){if(signal.startsWith('B')){tp=parseFloat((cmp*(1+PCT_TP)).toFixed(2));sl=parseFloat((cmp*(1-PCT_SL)).toFixed(2))}else{tp=parseFloat((cmp*(1-PCT_TP)).toFixed(2));sl=parseFloat((cmp*(1+PCT_SL)).toFixed(2))};tpSlSource='PCT'}
     const rr=sl>0?parseFloat((Math.abs(tp-cmp)/Math.abs(cmp-sl)).toFixed(2)):1;
     const weeklyTrend=calcWeeklyTrend(info.rows),barsAgo=calcBarsAgo(h9,h10,smi,smiSig,bandZone,signal);
+    // ── STALENESS FILTER: only show signals from the last 2 candles (barsAgo 0 or 1) ──
+    // A barsAgo=2+ signal means the setup fired 2+ days ago — no longer actionable.
+    if(barsAgo>1)continue;
+
+    // ── FOLLOW-THROUGH CHECK for 1-day-old signals ──
+    // If the signal fired yesterday (barsAgo=1), today's candle must confirm the direction.
+    // BUY: today must be green (close > open) AND close > yesterday's close (signal day)
+    // SELL: today must be red (close < open) AND close < yesterday's close (signal day)
+    if(barsAgo===1){
+      const todayCl=closes[n],todayOp=rows[n].op,prevCl=closes[n-1];
+      if(signal.startsWith('B')&&(todayCl<=todayOp||todayCl<=prevCl))continue;
+      if(signal.startsWith('S')&&(todayCl>=todayOp||todayCl>=prevCl))continue;
+    }
     const score=calcScore(signal,bandZone,barsAgo,weeklyTrend,rr);
     const secBrd=sectorBreadth[info.sector]||{pct:50};
     const ctxKey=buildCtxKey(signal,mktRegime,getBkt(secBrd.pct||50,40,60),getBkt(hvp||50,30,60));
     const ctx=contextWRMap[ctxKey];let ctxAdj=0;
     if(ctx&&ctx.n>=5){if(ctx.wr<45)ctxAdj=-8;else if(ctx.wr>70)ctxAdj=5}
-    const finalScore=Math.min(100,Math.max(0,score+ctxAdj));
-    const prevSig=prevSigMap[sym]||null,ret250=stockReturns[sym]?stockReturns[sym].ret_250:null;
+    // Layer 2: sequence win rate bonus — wired in (was computed but not applied before)
+    const prevSig=prevSigMap[sym]||null;
+    const ret250=stockReturns[sym]?stockReturns[sym].ret_250:null;
+    const seqAdj=getSeqBonus(prevSig,signal); // -5 to +8 based on historical prev→curr WR
+    const finalScore=Math.min(100,Math.max(0,score+ctxAdj+seqAdj));
     const nseiCorr=corrData[sym]?corrData[sym]['NSEI']||corrData[sym]['CRSLDX']||null:null;
     const kelly=getKelly(sym),learnedWR=getLearntWR(signal,mktRegime,secBrd.pct,hvp);
     const earnProx=checkEarningProximity(sym,rows[n].date,15),mbSc=computeMBScore(sym,bySymbol);
@@ -2574,15 +2594,13 @@ function renderBrokerHoldings(){
     return;
   }
 
-  // ── Compute totals using effectiveQty = settled + T1 ──
-  // T1 = bought today, not yet settled but still your shares; must be included
-  let totalInvested=0,totalCurrent=0,totalPnl=0,totalDayPnl=0;
+  // Unrealised P&L = (LTP − Avg Price) × effectiveQty — same formula for ALL stock types
+  let totalInvested=0,totalCurrent=0,totalPnl=0;
   hld.forEach(h=>{
     const effQty=(h.quantity||0)+(h.t1_quantity||0);
     totalInvested+=(h.average_price||0)*effQty;
     totalCurrent+=(h.last_price||0)*effQty;
-    totalPnl+=h.pnl||0;
-    totalDayPnl+=(h.day_change||0)*effQty;
+    totalPnl+=((h.last_price||0)-(h.average_price||0))*effQty;
   });
 
   // ── Summary strip ──
@@ -2608,52 +2626,45 @@ function renderBrokerHoldings(){
         <label>Unrealised P&L</label>
         <span>${sf(totalPnl,totalInvested)}</span>
       </div>
-      <div class="brk-sum-box" style="border-left:3px solid ${totalDayPnl>=0?'var(--bull)':'var(--bear)'}">
-        <label>Today's Change</label>
-        <span>${sf(totalDayPnl,totalInvested)}</span>
-      </div>
     `;
   }
 
-  // ── Sort: biggest loser first (most attention needed) ──
-  const sorted=[...hld].sort((a,b)=>(a.pnl||0)-(b.pnl||0));
+  // Sort: biggest loser first (most attention needed)
+  const sorted=[...hld].sort((a,b)=>{
+    const pnlA=((a.last_price||0)-(a.average_price||0))*((a.quantity||0)+(a.t1_quantity||0));
+    const pnlB=((b.last_price||0)-(b.average_price||0))*((b.quantity||0)+(b.t1_quantity||0));
+    return pnlA-pnlB;
+  });
 
   tb.innerHTML=sorted.map(h=>{
-    const qty     = h.quantity||0;          // settled (T+1 complete)
-    const t1qty   = h.t1_quantity||0;       // bought today, awaiting settlement
-    const effQty  = qty+t1qty;              // total shares you own right now
+    const qty     = h.quantity||0;
+    const t1qty   = h.t1_quantity||0;
+    const effQty  = qty+t1qty;
     const avgCost = h.average_price||0;
     const ltp     = h.last_price||0;
 
-    // ── Core calculations — all use effectiveQty ──
-    const invested  = avgCost*effQty;       // what you paid
-    const current   = ltp*effQty;          // what it's worth now
+    // All core calculations use effectiveQty (settled + T1)
+    const invested  = avgCost*effQty;
+    const current   = ltp*effQty;
 
-    // % vs cost: how far LTP is from your average buy price
-    const vsAvg     = avgCost>0?((ltp-avgCost)/avgCost*100):0;
-
-    // Unrealised P&L from Zerodha (user confirmed this is correct — don't recompute)
-    const pnl       = h.pnl||0;
+    // Unrealised P&L = (LTP − Avg Price) × effectiveQty — same formula for ALL stock types
+    const pnl       = (ltp-avgCost)*effQty;
     const pnlPct    = invested>0?(pnl/invested*100):0;
+    const pnlCls    = pnl>=0?'c-bull':'c-bear';
 
-    // Day P&L uses effectiveQty
-    const dayPnl    = (h.day_change||0)*effQty;
-    const dayPnlPct = h.day_change_percentage||0;
+    // % vs cost (same number as pnlPct but from price perspective)
+    const vsAvg     = avgCost>0?((ltp-avgCost)/avgCost*100):0;
+    const vsAvgCls  = vsAvg>=0?'c-bull':'c-bear';
 
-    // Portfolio weight: this stock's current value as % of total portfolio
+    // Portfolio weight
     const weight    = totalCurrent>0?(current/totalCurrent*100):0;
 
-    // Realised P&L — pull from allPositions (covers squared-off CNC too)
+    // Realised P&L from allPositions (covers squared-off CNC)
     const posMatch    = (_brokerData.allPositions||_brokerData.positions||[]).find(p=>p.tradingsymbol===h.tradingsymbol&&p.product==='CNC');
     const realisedPnl = posMatch?(posMatch.realised||0):null;
+    const relCls      = realisedPnl===null?'c-dim':realisedPnl>=0?'c-bull':'c-bear';
 
-    // ── CSS classes ──
-    const pnlCls  = pnl>=0?'c-bull':'c-bear';
-    const dayCls  = dayPnl>=0?'c-bull':'c-bear';
-    const vsAvgCls= vsAvg>=0?'c-bull':'c-bear';
-    const relCls  = realisedPnl===null?'c-dim':realisedPnl>=0?'c-bull':'c-bear';
-
-    // ── Qty cell: show full breakdown ──
+    // Qty cell
     const qtyCell = effQty===0
       ? '<span class="c-dim">—</span>'
       : qty>0&&t1qty>0
@@ -2662,8 +2673,8 @@ function renderBrokerHoldings(){
           ? `<span style="color:var(--amber);font-weight:700">${t1qty}</span><div style="font-size:7px;color:var(--amber)">T1 ⏳ pending</div>`
           : `<span style="font-weight:700">${qty}</span>`;
 
-    // ── vs Cost cell: % with mini progress bar ──
-    const barPct  = Math.min(Math.abs(vsAvg),25)/25*100; // cap bar at 25%
+    // vs Cost cell with mini bar
+    const barPct   = Math.min(Math.abs(vsAvg),25)/25*100;
     const vsAvgCell=`<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
       <span class="${vsAvgCls}" style="font-weight:700;font-size:10px">${vsAvg>=0?'+':''}${vsAvg.toFixed(2)}%</span>
       <div style="width:44px;height:3px;background:var(--border);border-radius:2px;overflow:hidden">
@@ -2671,7 +2682,7 @@ function renderBrokerHoldings(){
       </div>
     </div>`;
 
-    // ── Weight cell: % allocation bar ──
+    // Weight cell with bar
     const weightCell=`<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
       <span style="font-size:9px;font-weight:700;color:var(--text2)">${weight.toFixed(1)}%</span>
       <div style="width:44px;height:3px;background:var(--border);border-radius:2px;overflow:hidden">
@@ -2679,14 +2690,10 @@ function renderBrokerHoldings(){
       </div>
     </div>`;
 
-    // ── P&L cells ──
+    // Unrealised P&L cell
     const pnlCell=`<div class="pnl-cell">
       <span class="pnl-amt ${pnlCls}">${pnl>=0?'+':''}₹${Math.round(Math.abs(pnl)).toLocaleString('en-IN')}</span>
       <span class="pnl-pct ${pnlCls}">${pnlPct>=0?'+':''}${pnlPct.toFixed(2)}%</span>
-    </div>`;
-    const dayCell=`<div class="pnl-cell">
-      <span class="pnl-amt ${dayCls}">${dayPnl>=0?'+':''}₹${Math.round(Math.abs(dayPnl)).toLocaleString('en-IN')}</span>
-      <span class="pnl-pct ${dayCls}">${dayPnlPct>=0?'+':''}${dayPnlPct.toFixed(2)}%</span>
     </div>`;
 
     return`<tr>
@@ -2694,17 +2701,13 @@ function renderBrokerHoldings(){
         <div style="font-family:var(--mono);font-weight:700;font-size:10px;letter-spacing:.3px">${h.tradingsymbol}</div>
         ${t1qty>0?`<span style="font-size:7px;background:rgba(217,119,6,.15);color:var(--amber);padding:1px 4px;border-radius:2px;border:1px solid rgba(217,119,6,.3)">T1</span>`:''}
       </td>
-      <td style="font-family:var(--mono);font-weight:700;white-space:nowrap">
-        ₹${ltp.toFixed(2)}
-        <div style="font-size:7px;margin-top:1px" class="${dayCls}">${dayPnlPct>=0?'+':''}${dayPnlPct.toFixed(2)}% today</div>
-      </td>
+      <td style="font-family:var(--mono);font-weight:700;white-space:nowrap">₹${ltp.toFixed(2)}</td>
       <td style="text-align:center;font-family:var(--mono)">${qtyCell}</td>
       <td style="text-align:right;font-family:var(--mono);color:var(--text2)">₹${avgCost.toFixed(2)}</td>
       <td style="text-align:right">${vsAvgCell}</td>
       <td style="text-align:right;font-family:var(--mono);color:var(--text2)">₹${Math.round(invested).toLocaleString('en-IN')}<div style="font-size:7px;color:var(--text3)">= ${effQty} × ₹${avgCost.toFixed(0)}</div></td>
       <td style="text-align:right;font-family:var(--mono)">₹${Math.round(current).toLocaleString('en-IN')}<div style="font-size:7px;color:var(--text3)">= ${effQty} × ₹${ltp.toFixed(0)}</div></td>
       <td style="text-align:right">${pnlCell}</td>
-      <td style="text-align:right">${dayCell}</td>
       <td style="text-align:right">${weightCell}</td>
       <td style="text-align:right;font-family:var(--mono)" class="${relCls}">
         ${realisedPnl!==null?(realisedPnl>=0?'+':'')+'₹'+Math.round(Math.abs(realisedPnl)).toLocaleString('en-IN'):'<span class="c-dim">—</span>'}
